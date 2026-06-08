@@ -37,6 +37,20 @@ function Install-Python {
   return $false
 }
 
+# Install a skill's Python dependencies (from its skill.install.json pipPackages).
+function Install-PipDeps($manifestPath, $py) {
+  if (-not $py) { return }
+  if (-not (Test-Path $manifestPath)) { return }
+  try { $m = Get-Content $manifestPath -Raw | ConvertFrom-Json } catch { return }
+  $pkgs = $m.pipPackages
+  if (-not $pkgs) { return }
+  Write-Host "  installing Python packages: $($pkgs -join ', ')"
+  & $py -m pip install --disable-pip-version-check @pkgs
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "  pip install failed. Run manually: $py -m pip install $($pkgs -join ' ')"
+  }
+}
+
 # Print where to obtain a skill's credentials (from its skill.install.json authHelp).
 function Write-AuthHelp($manifestPath) {
   if (-not (Test-Path $manifestPath)) { return }
@@ -103,9 +117,15 @@ foreach ($f in $folders) {
     $needsPython = $true; break
   }
 }
+$py = $null
 if ($needsPython) {
   Write-Host "`nChecking Python (required by an installed skill)..."
-  $null = Resolve-Python
+  $py = Resolve-Python
+}
+
+# Install each installed skill's Python dependencies
+foreach ($f in $folders) {
+  Install-PipDeps (Join-Path (Join-Path $dest $f.Name) 'skill.install.json') $py
 }
 
 # Show where to get credentials for any installed skill that needs them

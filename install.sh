@@ -46,6 +46,28 @@ install_python() {
   fi
 }
 
+# Install a skill's Python dependencies (from its skill.install.json pipPackages).
+# Uses the resolved python ($2) to parse JSON and run pip; no-op if python is unavailable.
+pip_install_for_skill() {
+  local manifest="$1" py="$2" pkgs
+  [ -f "$manifest" ] || return 0
+  [ -n "$py" ] || return 0
+  pkgs="$("$py" - "$manifest" <<'PYEOF'
+import json, sys
+try:
+    m = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+print(" ".join(m.get("pipPackages") or []))
+PYEOF
+)"
+  [ -n "$pkgs" ] || return 0
+  echo "  installing Python packages: $pkgs"
+  # shellcheck disable=SC2086
+  "$py" -m pip install --disable-pip-version-check $pkgs \
+    || echo "  ! pip install failed. Run manually: $py -m pip install $pkgs" >&2
+}
+
 # Print where to obtain a skill's credentials (from its skill.install.json authHelp).
 # Uses the resolved python ($2) to parse JSON; no-op if python is unavailable.
 print_auth_help() {
@@ -124,8 +146,14 @@ if [ "$needs_python" -eq 1 ]; then
   PY="$(ensure_python || true)"
 fi
 
+[ -n "$PY" ] || PY="$(python_cmd || true)"   # for parsing manifests / pip, even if no install was needed
+
+# Install each installed skill's Python dependencies
+for f in "${FOLDERS[@]}"; do
+  pip_install_for_skill "$DEST/$(basename "$f")/skill.install.json" "$PY"
+done
+
 # Show where to get credentials for any installed skill that needs them
-[ -n "$PY" ] || PY="$(python_cmd || true)"   # for parsing manifests, even if no install was needed
 for f in "${FOLDERS[@]}"; do
   print_auth_help "$DEST/$(basename "$f")/skill.install.json" "$PY"
 done

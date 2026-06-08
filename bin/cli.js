@@ -167,6 +167,22 @@ function rmAll(dir, base) {
   }
 }
 
+// Install a skill's Python dependencies (from skill.install.json pipPackages).
+function pipInstallForSkill(installedDir, py) {
+  if (!py) return;
+  const manifest = path.join(installedDir, 'skill.install.json');
+  if (!fs.existsSync(manifest)) return;
+  let m;
+  try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
+  const pkgs = Array.isArray(m.pipPackages) ? m.pipPackages : [];
+  if (pkgs.length === 0) return;
+  console.log(`  installing Python packages: ${pkgs.join(', ')}`);
+  const r = spawnSync(py, ['-m', 'pip', 'install', '--disable-pip-version-check', ...pkgs], { stdio: 'inherit' });
+  if (r.status !== 0) {
+    console.error(`  ! pip install failed (exit ${r.status}). Run manually:\n    ${py} -m pip install ${pkgs.join(' ')}`);
+  }
+}
+
 // Print where to obtain the skill's credentials (from skill.install.json authHelp).
 function printAuthHelp(installedDir) {
   const manifest = path.join(installedDir, 'skill.install.json');
@@ -240,6 +256,9 @@ async function main() {
   if (chosen.some(skillNeedsPython)) {
     py = await ensurePython(args.yes);
   }
+
+  // Install each skill's Python dependencies
+  for (const dir of installed) pipInstallForSkill(dir, py);
 
   // Always show where to get credentials for any skill that needs them
   for (const dir of installed) printAuthHelp(dir);
