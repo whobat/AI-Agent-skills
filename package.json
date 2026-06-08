@@ -1,0 +1,22 @@
+{
+  "name": "ai-agent-skills",
+  "version": "0.1.0",
+  "description": "Install portable SKILL.md agent skills into Claude Code, Codex, OpenCode and other agents.",
+  "bin": {
+    "ai-agent-skills": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=16.7"
+  },
+  "keywords": [
+    "agent-skills",
+    "skill.md",
+    "claude-code",
+    "codex",
+    "opencode"
+  ]
+}

@@ -143,6 +143,39 @@ class TestClientUrlAndHeaders(unittest.TestCase):
             tr.SevenPaceClient("https://x")
 
 
+class TestAuthSetup(unittest.TestCase):
+    def test_writes_config_from_prompts(self):
+        import tempfile
+        # reader-svar i kaldsrækkefølge: konto, org, projekt(Enter), work item, kommentar
+        answers = iter(["dagrofa", "Dagrofa", "", "32933", "Arbejde"])
+        secrets = iter(["TOK7PACE", "ADOPAT"])  # 7pace-token, ADO-pat
+        with tempfile.TemporaryDirectory() as d:
+            cfgp = Path(d) / "config.json"
+            tr.run_auth_setup(cfgp, reader=lambda _p: next(answers),
+                              secret_reader=lambda _p: next(secrets))
+            cfg = json.loads(cfgp.read_text(encoding="utf-8"))
+        self.assertEqual(cfg["auth"], {"type": "bearer", "token": "TOK7PACE"})
+        self.assertEqual(cfg["base_url"], "https://dagrofa.timehub.7pace.com")
+        self.assertEqual(cfg["azure_devops"]["organization"], "Dagrofa")
+        self.assertEqual(cfg["azure_devops"]["pat"], "ADOPAT")
+        self.assertIsNone(cfg["azure_devops"]["project"])
+        self.assertEqual(cfg["defaults"]["work_item_id"], 32933)
+        self.assertEqual(cfg["defaults"]["comment"], "Arbejde")
+
+    def test_full_url_and_skip_pat(self):
+        import tempfile
+        answers = iter(["", "https://acme.timehub.7pace.com", "Acme", "", "", "Work"])
+        secrets = iter(["T", ""])  # token, ingen ADO-pat
+        with tempfile.TemporaryDirectory() as d:
+            cfgp = Path(d) / "config.json"
+            tr.run_auth_setup(cfgp, reader=lambda _p: next(answers),
+                              secret_reader=lambda _p: next(secrets))
+            cfg = json.loads(cfgp.read_text(encoding="utf-8"))
+        self.assertEqual(cfg["base_url"], "https://acme.timehub.7pace.com")
+        self.assertNotIn("pat", cfg["azure_devops"])           # sprunget over
+        self.assertNotIn("work_item_id", cfg["defaults"])      # ikke angivet
+
+
 # ===========================================================================
 # INTEGRATION TESTS (rigtig API) — gated bag RUN_INTEGRATION=1
 # ===========================================================================

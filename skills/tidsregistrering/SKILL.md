@@ -22,7 +22,9 @@ Danish weekdays: man=Mon … fre=Fri. The script's weekday pattern only includes
 
 ## Method 1 (preferred): API script
 
-Config with the 7pace **Bearer API token** lives at `C:\Projects\7pace\config.json` (token generated in 7pace → Settings → Reporting & API). Always pass `--yes --json`. `SCRIPT=C:\Users\reneh\.claude\skills\tidsregistrering\scripts\tidsregistrering.py`, `CFG=C:\Projects\7pace\config.json`.
+`SCRIPT` = this skill's `scripts/tidsregistrering.py`. `CFG` = `~/.7pace/config.json` (the default config path — so `--config` is optional below; shown for clarity).
+
+**First-time setup:** `python SCRIPT --auth` prompts (hidden) for the 7pace **Bearer API token** (generated in 7pace → Settings → Reporting & API) and an optional **Azure DevOps PAT** (for `--search`, scope "Work Items (Read)"), then writes `~/.7pace/config.json` (chmod 600, gitignored). The two tokens are separate systems. If config already has valid tokens, skip this. Always pass `--yes --json` for automation.
 
 0. **Resolve work item from free text** (if the user named a project/work item instead of a numeric ID): `python SCRIPT --config CFG --search "Nordisk film" --json`. Search is **org-wide** by default (across all ADO projects). To narrow when there are too many hits, add `--project "IT Infrastruktur"` (or whichever project the user names). Returns `matches` (id, title, type, state, project). **Exactly one match** → use its id. **Multiple matches** → ask the user which one (AskUserQuestion listing "id — title — project (state)"; surface state so they avoid Obsolete/closed items); never guess. **Zero matches** → tell the user; don't proceed. If `count` is ~50 (the cap), results were truncated → ask the user to refine the text. (Search uses the Azure DevOps PAT in `config.json` → `azure_devops.pat`, scope "Work Items (Read)" — separate from the 7pace token.)
 1. **Confirm the plan first** (day count, total hours, work item, comment) — can be 40+ entries.

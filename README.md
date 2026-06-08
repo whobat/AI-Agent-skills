@@ -10,12 +10,15 @@ A *skill* is just a folder containing a `SKILL.md` (YAML frontmatter `name` + `d
 AI-Agent-skills/
 ├── README.md
 ├── .gitignore                 # ignores real config.json / secrets
-├── install.ps1                # installer (Windows PowerShell)
-├── install.sh                 # installer (macOS/Linux/Git-Bash)
+├── package.json               # enables: npx github:whobat/AI-Agent-skills
+├── bin/cli.js                 # npx installer (interactive + flags)
+├── install.ps1                # script installer (Windows PowerShell)
+├── install.sh                 # script installer (macOS/Linux/Git-Bash)
 └── skills/
     └── tidsregistrering/       # one folder per skill
         ├── SKILL.md            # the skill manifest + instructions
         ├── REFERENCE.md        # detailed reference (optional)
+        ├── skill.install.json  # optional: declares the credential-setup command
         ├── config.example.json # template — copy to config.json (gitignored)
         └── scripts/
             ├── tidsregistrering.py
@@ -28,15 +31,30 @@ AI-Agent-skills/
 |-------|--------------|-------------|
 | **tidsregistrering** | Create/edit/delete time entries in 7pace Timetracker (Azure DevOps) via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [skill README note](#configuration--secrets)). |
 
-## Quick install (recommended)
+## Install with `npx` (recommended)
 
-Use the installer to copy skills into an agent's skills directory. It copies the folders and **never copies real `config.json`** (only `config.example.json`).
+No clone needed — run it straight from GitHub:
+
+```bash
+# Interactive (pick agent + skill, optional credential setup)
+npx github:whobat/AI-Agent-skills
+
+# Non-interactive
+npx github:whobat/AI-Agent-skills --agent claude --skill all
+npx github:whobat/AI-Agent-skills --agent codex  --skill tidsregistrering --auth
+```
+
+Flags: `--agent claude|codex|opencode` · `--skill all|<name>` · `--auth` (run a skill's credential setup after install) · `--symlink` · `--list` · `-y/--yes` · `-h`.
+
+The installer copies skill folders into the agent's skills dir and **never copies real `config.json`** (only `config.example.json`). With `--auth` (or when prompted), it runs the skill's credential setup so your tokens are entered securely and saved locally — see [Configuration & secrets](#configuration--secrets).
+
+## Install with the bundled scripts (no Node)
+
+If you've cloned the repo and prefer not to use Node:
 
 **Windows (PowerShell):**
 ```powershell
-# All skills into Claude Code
 ./install.ps1 -Agent claude -Skill all
-# A single skill into Codex
 ./install.ps1 -Agent codex -Skill tidsregistrering
 ```
 
@@ -46,7 +64,7 @@ Use the installer to copy skills into an agent's skills directory. It copies the
 ./install.sh --agent codex --skill tidsregistrering
 ```
 
-`-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name.
+`-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy.
 
 ## Manual install (per agent)
 
@@ -88,12 +106,17 @@ There is no single standard for every agent. Two fallbacks that always work:
 
 Skills that need credentials ship a `config.example.json`. **Never commit real tokens** — `.gitignore` already excludes `config.json` (and `.env`, etc.).
 
+**Easiest — guided setup (recommended):** the installer's `--auth` runs it for you, or run it directly:
 ```bash
-cd skills/tidsregistrering
-cp config.example.json config.json   # then edit config.json with your tokens
+python skills/tidsregistrering/scripts/tidsregistrering.py --auth
 ```
+It prompts (tokens hidden) and writes `~/.7pace/config.json` (chmod 600). For `tidsregistrering` that's the 7pace **Bearer token** (worklog CRUD) and an optional Azure DevOps **PAT** (work-item search) — two separate systems, both kept out of git.
 
-Point the script at it explicitly with `--config <path>` (or place it where the skill expects). For `tidsregistrering`, the config holds the 7pace Bearer token (worklog CRUD) and an Azure DevOps PAT (work-item search) — both kept out of git.
+**Manual alternative:**
+```bash
+cp skills/tidsregistrering/config.example.json ~/.7pace/config.json   # then edit with your tokens
+```
+The script reads `~/.7pace/config.json` by default; override with `--config <path>`.
 
 ## Verifying a skill (tests)
 

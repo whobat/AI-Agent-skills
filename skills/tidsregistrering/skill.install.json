@@ -1,0 +1,5 @@
+{
+  "authCommand": "python scripts/tidsregistrering.py --auth",
+  "requires": ["Python 3.8+", "pip install requests"],
+  "description": "Optional: run after install to enter your 7pace token + Azure DevOps PAT into ~/.7pace/config.json"
+}

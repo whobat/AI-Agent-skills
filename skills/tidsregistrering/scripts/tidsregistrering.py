@@ -111,6 +111,65 @@ def create_default_config(path: Path):
 
 
 # ---------------------------------------------------------------------------
+# Interaktiv auth-opsætning (skriver nøgler til config)
+# ---------------------------------------------------------------------------
+
+def run_auth_setup(config_path: Path, reader=input, secret_reader=None) -> Path:
+    """Spørg interaktivt efter nøgler og gem dem i config_path.
+    `reader`/`secret_reader` kan injiceres i tests. Hemmeligheder læses skjult."""
+    import getpass
+    if secret_reader is None:
+        secret_reader = getpass.getpass
+    existing = load_config(config_path)
+    ex_auth = existing.get("auth", {}) or {}
+    ex_azdo = existing.get("azure_devops", {}) or {}
+    ex_def = existing.get("defaults", {}) or {}
+
+    print(f"7pace Timetracker – opsætning. Config gemmes i: {config_path}")
+    acct = reader("Azure DevOps konto (fx 'dagrofa'), eller Enter for at indtaste fuld URL: ").strip()
+    if acct:
+        base_url = f"https://{acct}.timehub.7pace.com"
+    else:
+        default_base = existing.get("base_url", DEFAULT_BASE_URL)
+        base_url = reader(f"7pace base URL [{default_base}]: ").strip() or default_base
+
+    token = secret_reader("7pace API token (Bearer, skjult): ").strip() or ex_auth.get("token", "")
+    org = reader(f"Azure DevOps organisation til søgning [{ex_azdo.get('organization', '')}]: ").strip() \
+        or ex_azdo.get("organization", "")
+    azdo_pat = secret_reader("Azure DevOps PAT til søgning (valgfri, Enter=spring over): ").strip() \
+        or ex_azdo.get("pat", "")
+    project = reader("Begræns søgning til ét projekt (Enter = org-bredt): ").strip() or None
+    wi = reader(f"Standard work item ID (valgfri) [{ex_def.get('work_item_id', '')}]: ").strip()
+    comment = reader(f"Standard kommentar [{ex_def.get('comment', 'Arbejde')}]: ").strip() \
+        or ex_def.get("comment", "Arbejde")
+
+    cfg = {
+        "auth": {"type": "bearer", "token": token},
+        "base_url": base_url,
+        "api_version": existing.get("api_version", API_VERSION),
+        "azure_devops": {"organization": org, "project": project},
+        "defaults": {"comment": comment},
+    }
+    if azdo_pat:
+        cfg["azure_devops"]["pat"] = azdo_pat
+    if wi:
+        try:
+            cfg["defaults"]["work_item_id"] = int(wi)
+        except ValueError:
+            pass
+    elif ex_def.get("work_item_id"):
+        cfg["defaults"]["work_item_id"] = ex_def["work_item_id"]
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        os.chmod(config_path, 0o600)  # best-effort på POSIX
+    except Exception:
+        pass
+    return config_path
+
+
+# ---------------------------------------------------------------------------
 # Hjælpefunktioner
 # ---------------------------------------------------------------------------
 
@@ -398,6 +457,8 @@ Eksempler:
                         help="Sti til config-fil")
     parser.add_argument("--init-config", action="store_true",
                         help="Opret template config-fil")
+    parser.add_argument("--auth", action="store_true",
+                        help="Interaktiv opsætning: indtast nøgler (skjult) og gem dem i config")
 
     # Behavior
     parser.add_argument("--yes", "-y", action="store_true",
@@ -415,6 +476,10 @@ Eksempler:
 
     if args.init_config:
         create_default_config(Path(args.config))
+
+    if args.auth:
+        path = run_auth_setup(Path(args.config))
+        _ok({"status": "configured", "config_path": str(path)}, args.json)
 
     config = load_config(Path(args.config))
     base_url = resolve_config_value(args.base_url, "base_url", "SEVENPACE_BASE_URL",
