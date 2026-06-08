@@ -65,6 +65,81 @@ function pythonCmd() {
   return null;
 }
 
+function commandExists(c) {
+  const finder = process.platform === 'win32' ? 'where' : 'which';
+  return spawnSync(finder, [c], { stdio: 'ignore' }).status === 0;
+}
+
+// Install Python with the platform's package manager. Returns { ok, reason }.
+function installPython() {
+  const plat = process.platform;
+  let cmd, cmdArgs, label;
+  if (plat === 'win32') {
+    if (!commandExists('winget')) return { ok: false, reason: 'winget not found' };
+    cmd = 'winget';
+    cmdArgs = ['install', '-e', '--id', 'Python.Python.3.12', '--source', 'winget',
+      '--accept-package-agreements', '--accept-source-agreements'];
+    label = 'winget install Python.Python.3.12';
+  } else if (plat === 'darwin') {
+    if (!commandExists('brew')) return { ok: false, reason: 'Homebrew (brew) not found' };
+    cmd = 'brew'; cmdArgs = ['install', 'python']; label = 'brew install python';
+  } else if (commandExists('apt-get')) {
+    cmd = 'sudo'; cmdArgs = ['apt-get', 'install', '-y', 'python3']; label = 'sudo apt-get install -y python3';
+  } else if (commandExists('dnf')) {
+    cmd = 'sudo'; cmdArgs = ['dnf', 'install', '-y', 'python3']; label = 'sudo dnf install -y python3';
+  } else {
+    return { ok: false, reason: 'no supported package manager (winget/brew/apt-get/dnf)' };
+  }
+  console.log(`  installing Python via: ${label}`);
+  const r = spawnSync(cmd, cmdArgs, { stdio: 'inherit' });
+  return { ok: r.status === 0, reason: r.status === 0 ? null : `exit ${r.status}` };
+}
+
+// Returns a working python command, installing it first if missing. null if unavailable.
+async function ensurePython(autoYes) {
+  let py = pythonCmd();
+  if (py) return py;
+  console.log('  Python not found on PATH.');
+  if (!autoYes) {
+    const ans = (await ask('  Install Python now? [Y/n] ')).toLowerCase();
+    if (ans === 'n' || ans === 'no' || ans === 'nej') return null;
+  }
+  const res = installPython();
+  if (!res.ok) {
+    console.error(`  ! Could not auto-install Python (${res.reason}). Install it manually: https://www.python.org/downloads/`);
+    return null;
+  }
+  py = pythonCmd();
+  if (!py) {
+    console.log('  Python installed, but it is not on PATH for this session.');
+    console.log('  Open a NEW terminal and re-run the installer (or the skill\'s auth command).');
+    return null;
+  }
+  console.log(`  Python ready: ${py}`);
+  return py;
+}
+
+function hasPyFile(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) { if (hasPyFile(path.join(dir, e.name))) return true; }
+    else if (e.name.endsWith('.py')) return true;
+  }
+  return false;
+}
+
+// A skill needs Python if it ships .py scripts or its auth command runs python.
+function skillNeedsPython(name) {
+  const dir = path.join(SKILLS_DIR, name);
+  const manifest = path.join(dir, 'skill.install.json');
+  if (fs.existsSync(manifest)) {
+    try {
+      const cmd = (JSON.parse(fs.readFileSync(manifest, 'utf8')).authCommand || '').trim();
+      if (cmd.startsWith('python')) return true;
+    } catch { /* ignore malformed manifest */ }
+  }
+  return hasPyFile(dir);
+}
+
 function installSkill(name, destDir, symlink) {
   const src = path.join(SKILLS_DIR, name);
   const dest = path.join(destDir, name);
@@ -92,7 +167,20 @@ function rmAll(dir, base) {
   }
 }
 
-async function maybeRunAuth(installedDir, autoYes) {
+// Print where to obtain the skill's credentials (from skill.install.json authHelp).
+function printAuthHelp(installedDir) {
+  const manifest = path.join(installedDir, 'skill.install.json');
+  if (!fs.existsSync(manifest)) return;
+  let m;
+  try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
+  const help = Array.isArray(m.authHelp) ? m.authHelp : [];
+  if (!m.authCommand && help.length === 0) return;
+  console.log(`\nCredential setup for "${path.basename(installedDir)}":`);
+  if (m.authCommand) console.log(`  run: ${m.authCommand}`);
+  for (const line of help) console.log(`  ${line}`);
+}
+
+async function maybeRunAuth(installedDir, autoYes, py) {
   const manifest = path.join(installedDir, 'skill.install.json');
   if (!fs.existsSync(manifest)) return;
   let cmd;
@@ -104,8 +192,7 @@ async function maybeRunAuth(installedDir, autoYes) {
   }
   const parts = cmd.split(' ');
   if (parts[0] === 'python') {
-    const py = pythonCmd();
-    if (!py) { console.error('  ! Python not found on PATH — skipping auth. Run manually:\n    cd ' + installedDir + ' && ' + cmd); return; }
+    if (!py) { console.error('  ! Python not available — skipping auth. Run manually:\n    cd ' + installedDir + ' && ' + cmd); return; }
     parts[0] = py;
   }
   console.log(`  running auth: ${cmd}`);
@@ -148,10 +235,19 @@ async function main() {
   console.log(`\nInstalling [${chosen.join(', ')}] into ${agent} (${TARGETS[agent]})\n`);
   const installed = chosen.map((s) => installSkill(s, TARGETS[agent], args.symlink));
 
+  // Ensure Python is present for any skill that needs it (.py scripts or a python auth command).
+  let py = null;
+  if (chosen.some(skillNeedsPython)) {
+    py = await ensurePython(args.yes);
+  }
+
+  // Always show where to get credentials for any skill that needs them
+  for (const dir of installed) printAuthHelp(dir);
+
   // auth: explicit --auth runs it; otherwise (interactive) confirm per skill; --yes without --auth skips
   for (const dir of installed) {
-    if (args.auth) await maybeRunAuth(dir, true);
-    else if (!args.yes) await maybeRunAuth(dir, false);
+    if (args.auth) await maybeRunAuth(dir, true, py);
+    else if (!args.yes) await maybeRunAuth(dir, false, py);
   }
 
   console.log('\nDone.');

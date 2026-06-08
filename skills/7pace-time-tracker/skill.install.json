@@ -1,5 +1,13 @@
 {
   "authCommand": "python scripts/timetracker.py --auth",
   "requires": ["Python 3.8+", "pip install requests"],
-  "description": "Optional: run after install to enter your 7pace token + Azure DevOps PAT into ~/.7pace/config.json"
+  "description": "Optional: run after install to enter your 7pace token + Azure DevOps PAT into ~/.7pace/config.json",
+  "authHelp": [
+    "7pace Bearer token (required — worklog create/edit/delete):",
+    "  7pace Timetracker > Settings > Reporting & API > Create New Token",
+    "  at https://<org>.timehub.7pace.com  (this is NOT the Azure DevOps PAT)",
+    "Azure DevOps PAT (optional — only for --search work-item lookup):",
+    "  Azure DevOps > User settings (top-right) > Personal access tokens > New Token",
+    "  Scope: Work Items (Read)  at https://dev.azure.com/<org>/_usersSettings/tokens"
+  ]
 }

@@ -4,6 +4,26 @@ A shared collection of **Agent Skills** — portable `SKILL.md`-based capabiliti
 
 A *skill* is just a folder containing a `SKILL.md` (YAML frontmatter `name` + `description`, then Markdown instructions) plus optional `scripts/` and `references/`. The format is an [open standard](https://www.agensi.io/learn/agent-skills-open-standard), so the same folder installs into any supporting agent.
 
+## Requirements
+
+What you need depends on which skills you install. The skill itself (`SKILL.md`) is just text and needs nothing — the requirements come from any scripts a skill ships and the credentials it talks to.
+
+**General**
+
+| Requirement | When it's needed | Notes |
+|-------------|------------------|-------|
+| **Node.js 18+** | Only for the `npx` installer (`bin/cli.js`). | Not needed if you use `install.ps1` / `install.sh` or copy folders manually. |
+| **Python 3.8+** | Any skill that ships `.py` scripts (currently **7pace-time-tracker**). | All three installers **auto-detect Python and offer to install it** when a Python-based skill is selected — via `winget` (Windows), `brew` (macOS), or `apt-get`/`dnf` (Linux). If no package manager is found, install manually from [python.org](https://www.python.org/downloads/). |
+| **A supported package manager** | Only for the auto-install above. | `winget` / `brew` / `apt-get` / `dnf`. Without one, install Python yourself, then re-run. |
+
+> After an auto-install, Python may not be on `PATH` for the current terminal session — open a **new** terminal (or re-run the installer) so the freshly installed `python` is found.
+
+**Per-skill**
+
+| Skill | Runtime | Python packages | Credentials |
+|-------|---------|-----------------|-------------|
+| **7pace-time-tracker** | Python 3.8+ | `pip install requests` | `config.json` with a 7pace **Bearer token** (worklog CRUD) + optional Azure DevOps **PAT** (work-item search). See [Configuration & secrets](#configuration--secrets). |
+
 ## Repository layout
 
 ```
