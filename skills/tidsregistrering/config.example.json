@@ -1,0 +1,19 @@
+{
+  "auth": {
+    "type": "bearer",
+    "token": "PASTE_7PACE_API_TOKEN_HERE",
+    "_note": "7pace API token. Generate in 7pace > Settings > Reporting & API > Create New Token. NOT an Azure DevOps PAT."
+  },
+  "base_url": "https://<your-devops-account>.timehub.7pace.com",
+  "api_version": "3.2",
+  "azure_devops": {
+    "pat": "PASTE_AZURE_DEVOPS_PAT_HERE",
+    "organization": "<your-devops-org>",
+    "project": null,
+    "_note": "Only used for free-text work-item search (--search). PAT scope: Work Items (Read). project=null searches org-wide; set a project name to narrow."
+  },
+  "defaults": {
+    "work_item_id": 0,
+    "comment": "Arbejde"
+  }
+}

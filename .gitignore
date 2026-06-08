@@ -1,0 +1,27 @@
+# --- Secrets / local config (NEVER commit real tokens) ---
+config.json
+**/config.json
+*.local.json
+.env
+.env.*
+.7pace/
+secrets.*
+*token*.txt
+
+# Keep the example templates
+!config.example.json
+!**/config.example.json
+
+# --- Python ---
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
