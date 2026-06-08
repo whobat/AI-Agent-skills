@@ -7,12 +7,13 @@
 #   ./install.sh --agent opencode --skill all --symlink
 set -euo pipefail
 
-AGENT=""; SKILL="all"; SYMLINK=0
+AGENT=""; SKILL="all"; SYMLINK=0; YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --agent)   AGENT="${2:-}"; shift 2 ;;
     --skill)   SKILL="${2:-}"; shift 2 ;;
     --symlink) SYMLINK=1; shift ;;
+    -y|--yes)  YES=1; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Ukendt argument: $1" >&2; exit 1 ;;
   esac
@@ -104,6 +105,92 @@ ensure_python() {
   return 1
 }
 
+# Echo the 'version:' value from a skill's SKILL.md frontmatter (empty if absent).
+skill_version() {
+  local md="$1/SKILL.md"
+  [ -f "$md" ] || return 0
+  awk '
+    /^---[[:space:]]*$/ { if (inf) exit; inf=1; next }
+    inf && /^[[:space:]]*version:[[:space:]]*/ {
+      sub(/^[[:space:]]*version:[[:space:]]*/, ""); gsub(/[[:space:]]+$/, ""); print; exit
+    }' "$md"
+}
+
+# Ensure runtime requirements declared in a skill.install.json. Needs python to read the manifest.
+ensure_requirements() {
+  local manifest="$1" py
+  [ -f "$manifest" ] || return 0
+  py="$(python_cmd || true)"
+  if [ -z "$py" ]; then
+    echo "  (skipping requirement check for $(basename "$(dirname "$manifest")") — no python to read manifest)" >&2
+    return 0
+  fi
+  "$py" - "$manifest" <<'PYEOF' | while IFS="$(printf '\t')" read -r name detect minv brew url; do
+import json, sys
+try:
+    m = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(0)
+for r in (m.get("requirements") or []):
+    print("\t".join([str(r.get("name","")), str(r.get("detect","")),
+                     str(r.get("minVersion","")), str(r.get("brewCask","")), str(r.get("url",""))]))
+PYEOF
+    [ -n "$detect" ] || continue
+    if command_exists "$detect"; then echo "  requirement OK: $name"; continue; fi
+    echo "  requirement missing: $name"
+    if [ "$(uname)" = "Darwin" ] && command_exists brew && [ -n "$brew" ]; then
+      echo "  installing via: brew install --cask $brew"
+      brew install --cask "$brew" || echo "  ! brew install failed. Install manually: $url" >&2
+    else
+      echo "  ! Cannot auto-install $name on this platform. Install manually: $url" >&2
+    fi
+    if command_exists "$detect"; then echo "  $name ready"; else echo "  $name not on PATH; open a NEW terminal. ($url)"; fi
+  done
+}
+
+# Offer to update already-installed skills (from this repo) whose version differs from the repo.
+update_outdated() {
+  local dest="$1" src="$2"; shift 2
+  local chosen=" $* "
+  local d name instv repov i ans
+  local cand_name=() cand_from=() cand_to=()
+  for d in "$dest"/*/; do
+    [ -d "$d" ] || continue
+    name="$(basename "$d")"
+    case "$chosen" in *" $name "*) continue ;; esac
+    [ -d "$src/$name" ] || continue
+    instv="$(skill_version "$dest/$name")"
+    repov="$(skill_version "$src/$name")"
+    [ -n "$repov" ] || continue
+    if [ "$instv" != "$repov" ]; then
+      cand_name+=("$name"); cand_from+=("${instv:-unknown}"); cand_to+=("$repov")
+    fi
+  done
+  [ "${#cand_name[@]}" -gt 0 ] || return 0
+  echo
+  echo "Updates available for already-installed skills:"
+  for i in "${!cand_name[@]}"; do echo "  ${cand_name[$i]}: ${cand_from[$i]} -> ${cand_to[$i]}"; done
+  if [ "$YES" -ne 1 ]; then
+    if [ -t 0 ]; then
+      printf 'Update these now? [Y/n] '; read -r ans || true
+      case "$(echo "${ans:-}" | tr '[:upper:]' '[:lower:]')" in n|no|nej) return 0 ;; esac
+    else
+      echo "  (non-interactive; re-run with --yes to apply these updates)"; return 0
+    fi
+  fi
+  for i in "${!cand_name[@]}"; do
+    name="${cand_name[$i]}"
+    local tp="$dest/$name" keep=""
+    [ -f "$tp/config.json" ] && keep="$(cat "$tp/config.json")"
+    rm -rf "$tp"; cp -r "$src/$name" "$tp"
+    find "$tp" -name 'config.json' -type f -delete
+    find "$tp" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+    [ -n "$keep" ] && printf '%s' "$keep" > "$tp/config.json"
+    echo "  updated $name -> ${cand_to[$i]}"
+    ensure_requirements "$tp/skill.install.json"
+  done
+}
+
 case "$AGENT" in
   claude)   DEST="$HOME/.claude/skills" ;;
   codex)    DEST="$HOME/.agents/skills" ;;
@@ -134,6 +221,11 @@ for f in "${FOLDERS[@]}"; do
   fi
 done
 
+# Ensure each installed skill's declared runtime requirements (e.g. PowerShell 7) are present
+for f in "${FOLDERS[@]}"; do
+  ensure_requirements "$DEST/$(basename "$f")/skill.install.json"
+done
+
 # Ensure Python is present if any installed skill ships .py scripts
 needs_python=0
 for f in "${FOLDERS[@]}"; do
@@ -157,6 +249,11 @@ done
 for f in "${FOLDERS[@]}"; do
   print_auth_help "$DEST/$(basename "$f")/skill.install.json" "$PY"
 done
+
+# Offer to update other already-installed skills whose repo version changed
+CHOSEN_NAMES=()
+for f in "${FOLDERS[@]}"; do CHOSEN_NAMES+=("$(basename "$f")"); done
+update_outdated "$DEST" "$SRC" "${CHOSEN_NAMES[@]}"
 
 echo
 echo "Done. $AGENT skills dir: $DEST"

@@ -14,7 +14,8 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 |-------------|------------------|-------|
 | **Node.js 18+** | Only for the `npx` installer (`bin/cli.js`). | Not needed if you use `install.ps1` / `install.sh` or copy folders manually. |
 | **Python 3.8+** | Any skill that ships `.py` scripts (currently **7pace-time-tracker**). | All three installers **auto-detect Python and offer to install it** when a Python-based skill is selected — via `winget` (Windows), `brew` (macOS), or `apt-get`/`dnf` (Linux). If no package manager is found, install manually from [python.org](https://www.python.org/downloads/). The installers also **`pip install` each skill's Python packages** (declared in `skill.install.json`). |
-| **A supported package manager** | Only for the auto-install above. | `winget` / `brew` / `apt-get` / `dnf`. Without one, install Python yourself, then re-run. |
+| **PowerShell 7+** | Any skill that declares it as a requirement (currently **win-eventlog-triage**). | All three installers **auto-install it** when such a skill is selected: `winget install Microsoft.PowerShell` on Windows (falling back to downloading + silently running the latest MSI from GitHub if `winget` is absent), `brew install --cask powershell` on macOS. See [Runtime requirements](#runtime-requirements-skillinstalljson). |
+| **A supported package manager** | Only for the auto-install above. | `winget` / `brew` / `apt-get` / `dnf`. Without one, install the runtime yourself, then re-run. |
 
 > After an auto-install, Python may not be on `PATH` for the current terminal session — open a **new** terminal (or re-run the installer) so the freshly installed `python` is found.
 
@@ -23,6 +24,7 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 | Skill | Runtime | Python packages | Credentials |
 |-------|---------|-----------------|-------------|
 | **7pace-time-tracker** | Python 3.8+ | `requests` (installed automatically) | `config.json` with a 7pace **Bearer token** (worklog CRUD) + optional Azure DevOps **PAT** (work-item search). See [Configuration & secrets](#configuration--secrets). |
+| **win-eventlog-triage** | PowerShell 7+ (auto-installed) | — | A tier-admin credential, **prompted each run** and never stored. WinRM must be enabled on the target servers. |
 
 ## Repository layout
 
@@ -38,7 +40,7 @@ AI-Agent-skills/
     └── 7pace-time-tracker/ # one folder per skill (7pace Timetracker)
         ├── SKILL.md            # the skill manifest + instructions
         ├── REFERENCE.md        # detailed reference (optional)
-        ├── skill.install.json  # optional: declares the credential-setup command
+        ├── skill.install.json  # optional: runtime requirements, pip packages, credential-setup command
         ├── config.example.json # template — copy to config.json (gitignored)
         └── scripts/
             ├── timetracker.py
@@ -50,6 +52,7 @@ AI-Agent-skills/
 | Skill | What it does | Extra setup |
 |-------|--------------|-------------|
 | **7pace-time-tracker** | **7pace Timetracker** (Azure DevOps): create/edit/delete time entries via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [Configuration & secrets](#configuration--secrets)). |
+| **win-eventlog-triage** | **Windows Event Log triage**: pulls Critical/Error events from one or many servers in parallel over WinRM, groups them, and returns JSON the agent turns into a critical-first summary. | PowerShell 7+ (auto-installed by the installer), WinRM on the targets, and a tier-admin credential (prompted each run — nothing stored). |
 
 ## Install with `npx` (recommended)
 
@@ -84,7 +87,7 @@ If you've cloned the repo and prefer not to use Node:
 ./install.sh --agent codex --skill 7pace-time-tracker
 ```
 
-`-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy.
+`-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy, or `-Yes`/`--yes` to auto-apply runtime installs and skill updates without prompting.
 
 ## Manual install (per agent)
 
@@ -143,16 +146,66 @@ The script reads `~/.7pace/config.json` by default; override with `--config <pat
 Skills that bundle scripts may include tests.
 
 ```bash
+# Python (7pace-time-tracker)
 cd skills/7pace-time-tracker/scripts
 python -m unittest test_timetracker -v                 # unit tests, no network
 RUN_INTEGRATION=1 python -m unittest test_timetracker -v   # + live API (needs config.json)
 ```
+```powershell
+# PowerShell / Pester (win-eventlog-triage)
+Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser
+Invoke-Pester -Path ./skills/win-eventlog-triage/scripts/Invoke-EventLogTriage.Tests.ps1 -Output Detailed
+```
+
+## Runtime requirements (`skill.install.json`)
+
+A skill can declare runtimes it needs in `skill.install.json`. All three installers
+ensure each requirement is present (and ≥ `minVersion` when detectable) before
+finishing, **auto-installing** any that are missing:
+
+```json
+{
+  "requirements": [
+    {
+      "name": "PowerShell 7",
+      "detect": "pwsh",
+      "minVersion": "7.0",
+      "wingetId": "Microsoft.PowerShell",
+      "brewCask": "powershell",
+      "githubRepo": "PowerShell/PowerShell",
+      "url": "https://github.com/PowerShell/PowerShell/releases/latest"
+    }
+  ]
+}
+```
+
+- **Windows:** `winget install <wingetId>`; if `winget` is missing, the installer
+  downloads the latest `win-<arch>.msi` from `github.com/<githubRepo>` and runs it
+  silently (`msiexec /quiet`).
+- **macOS:** `brew install --cask <brewCask>`.
+- **Linux / no package manager:** prints the `url` to install manually.
+
+If a runtime is installed but not yet on `PATH` for the current shell, open a **new**
+terminal. (The same file may also declare `pipPackages`, `authCommand`, `authHelp`.)
+
+## Updating installed skills
+
+Each `SKILL.md` carries a `version:` in its frontmatter. On any install run, the
+installer compares the **installed** version of every other skill in the target
+agent's directory against the **repo** version, and offers to update the ones that
+differ (showing `old -> new`). Updates re-copy the skill files while **preserving any
+`config.json`** inside the skill folder. Pass `-Yes` (PowerShell) / `--yes` / `-y`
+(bash, npx) to apply updates non-interactively; omit it to be prompted.
+
+So after you change a skill, bump its `version:` and re-run the installer — anyone
+who already has it installed is offered the update automatically.
 
 ## Adding a new skill
 
-1. `mkdir -p skills/<name>/scripts` and add a `SKILL.md` (frontmatter `name` + `description`, then instructions).
+1. `mkdir -p skills/<name>/scripts` and add a `SKILL.md` (frontmatter `name`, `version`, `description`, then instructions).
 2. Put any code in `scripts/`, reference docs in `REFERENCE.md`, and a `config.example.json` if it needs secrets.
-3. Add a row to **Available skills** above. Commit.
+3. If it needs a runtime (Python packages, PowerShell 7, …), declare it in `skill.install.json` (see [Runtime requirements](#runtime-requirements-skillinstalljson)).
+4. Add a row to **Available skills** above. Bump `version:` whenever you change the skill so installed copies are offered the update. Commit.
 
 ## Sources
 

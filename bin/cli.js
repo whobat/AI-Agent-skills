@@ -215,6 +215,142 @@ async function maybeRunAuth(installedDir, autoYes, py) {
   spawnSync(parts[0], parts.slice(1), { cwd: installedDir, stdio: 'inherit' });
 }
 
+// Read 'version:' from a skill's SKILL.md frontmatter. null if absent.
+function skillVersion(dir) {
+  const md = path.join(dir, 'SKILL.md');
+  if (!fs.existsSync(md)) return null;
+  let inFront = false;
+  for (const line of fs.readFileSync(md, 'utf8').split(/\r?\n/)) {
+    if (/^---\s*$/.test(line)) { if (inFront) break; inFront = true; continue; }
+    if (inFront) { const m = line.match(/^\s*version:\s*(.+?)\s*$/); if (m) return m[1].trim(); }
+  }
+  return null;
+}
+
+function parseSemver(s) {
+  const m = String(s).match(/(\d+)\.(\d+)(?:\.(\d+))?/);
+  return m ? [+m[1], +m[2], +(m[3] || 0)] : null;
+}
+function semverGte(a, b) {
+  for (let i = 0; i < 3; i++) { if ((a[i] || 0) > (b[i] || 0)) return true; if ((a[i] || 0) < (b[i] || 0)) return false; }
+  return true;
+}
+
+// Is a declared requirement satisfied (on PATH, and >= minVersion when checkable)?
+function requirementPresent(req) {
+  if (!commandExists(req.detect)) return false;
+  if (req.minVersion) {
+    let r = spawnSync(req.detect, ['--version'], { encoding: 'utf8' });
+    let text = `${r.stdout || ''}${r.stderr || ''}`;
+    if (r.status !== 0 || !text.trim()) {
+      r = spawnSync(req.detect, ['-v'], { encoding: 'utf8' });
+      text = `${r.stdout || ''}${r.stderr || ''}`;
+    }
+    const have = parseSemver(text); const need = parseSemver(req.minVersion);
+    if (have && need) return semverGte(have, need);
+  }
+  return true;
+}
+
+// Download the latest GitHub-released MSI for a requirement and install it silently (Windows).
+async function installFromGitHubMsi(req) {
+  if (!req.githubRepo) return false;
+  const arch = ({ x64: 'x64', arm64: 'arm64', ia32: 'x86' })[process.arch] || 'x64';
+  try {
+    console.log(`  fetching latest ${req.name} MSI from github.com/${req.githubRepo} ...`);
+    const rel = await (await fetch(`https://api.github.com/repos/${req.githubRepo}/releases/latest`,
+      { headers: { 'User-Agent': 'ai-agent-skills-installer' } })).json();
+    const asset = (rel.assets || []).find((a) => new RegExp(`win-${arch}\\.msi$`).test(a.name));
+    if (!asset) { console.error(`  ! No win-${arch} MSI asset found. Install manually: ${req.url}`); return false; }
+    const tmp = path.join(os.tmpdir(), asset.name);
+    console.log(`  downloading ${asset.name} ...`);
+    fs.writeFileSync(tmp, Buffer.from(await (await fetch(asset.browser_download_url)).arrayBuffer()));
+    console.log(`  installing: msiexec /i ${tmp} /quiet /norestart`);
+    return spawnSync('msiexec', ['/i', tmp, '/quiet', '/norestart'], { stdio: 'inherit' }).status === 0;
+  } catch (e) {
+    console.error(`  ! MSI install failed: ${e.message}. Install manually: ${req.url}`);
+    return false;
+  }
+}
+
+// Install a missing requirement with the platform's package manager (winget/MSI, brew).
+async function installRequirement(req) {
+  if (process.platform === 'win32') {
+    if (req.wingetId && commandExists('winget')) {
+      console.log(`  installing ${req.name} via: winget install ${req.wingetId}`);
+      const r = spawnSync('winget', ['install', '-e', '--id', req.wingetId, '--source', 'winget',
+        '--accept-package-agreements', '--accept-source-agreements'], { stdio: 'inherit' });
+      if (r.status === 0) return true;
+      console.error('  winget failed; trying MSI fallback.');
+    }
+    return installFromGitHubMsi(req);
+  }
+  if (process.platform === 'darwin') {
+    if (req.brewCask && commandExists('brew')) {
+      console.log(`  installing ${req.name} via: brew install --cask ${req.brewCask}`);
+      return spawnSync('brew', ['install', '--cask', req.brewCask], { stdio: 'inherit' }).status === 0;
+    }
+    console.error(`  ! Homebrew not found. Install ${req.name} manually: ${req.url}`);
+    return false;
+  }
+  console.error(`  ! Cannot auto-install ${req.name} on this platform. Install manually: ${req.url}`);
+  return false;
+}
+
+// Ensure every runtime requirement declared in a skill's skill.install.json is present.
+async function ensureRequirements(installedDir, autoYes) {
+  const manifest = path.join(installedDir, 'skill.install.json');
+  if (!fs.existsSync(manifest)) return;
+  let m;
+  try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
+  const reqs = Array.isArray(m.requirements) ? m.requirements : [];
+  for (const req of reqs) {
+    if (!req || !req.detect) continue;
+    if (requirementPresent(req)) { console.log(`  requirement OK: ${req.name}`); continue; }
+    console.log(`  requirement missing: ${req.name}`);
+    if (!autoYes) {
+      const ans = (await ask(`  Install ${req.name} now? [Y/n] `)).toLowerCase();
+      if (ans === 'n' || ans === 'no' || ans === 'nej') { console.log(`  skipped — install manually: ${req.url}`); continue; }
+    }
+    await installRequirement(req);
+    if (requirementPresent(req)) console.log(`  ${req.name} ready`);
+    else console.log(`  ${req.name} installed but not on PATH for this session. Open a NEW terminal. (${req.url})`);
+  }
+}
+
+// Offer to update already-installed skills (from this repo) whose version differs from the repo.
+async function updateOutdated(destDir, chosenNames, autoYes) {
+  if (!fs.existsSync(destDir)) return;
+  const candidates = [];
+  for (const e of fs.readdirSync(destDir, { withFileTypes: true })) {
+    if (!e.isDirectory() || chosenNames.includes(e.name)) continue;
+    const srcDir = path.join(SKILLS_DIR, e.name);
+    if (!fs.existsSync(srcDir)) continue;
+    const instV = skillVersion(path.join(destDir, e.name));
+    const repoV = skillVersion(srcDir);
+    if (repoV && instV !== repoV) candidates.push({ name: e.name, from: instV || 'unknown', to: repoV });
+  }
+  if (candidates.length === 0) return;
+  console.log('\nUpdates available for already-installed skills:');
+  for (const c of candidates) console.log(`  ${c.name}: ${c.from} -> ${c.to}`);
+  if (!autoYes) {
+    const ans = (await ask('Update these now? [Y/n] ')).toLowerCase();
+    if (ans === 'n' || ans === 'no' || ans === 'nej') return;
+  }
+  for (const c of candidates) {
+    const dest = path.join(destDir, c.name);
+    const cfg = path.join(dest, 'config.json');
+    const keep = fs.existsSync(cfg) ? fs.readFileSync(cfg) : null;
+    fs.rmSync(dest, { recursive: true, force: true });
+    fs.cpSync(path.join(SKILLS_DIR, c.name), dest, { recursive: true });
+    rmAll(dest, 'config.json');
+    rmAll(dest, '__pycache__');
+    if (keep !== null) fs.writeFileSync(cfg, keep);
+    console.log(`  updated ${c.name} -> ${c.to}`);
+    await ensureRequirements(dest, autoYes);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) { console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].replace(/^[\s\S]*?\/\*/, '')); return; }
@@ -251,6 +387,9 @@ async function main() {
   console.log(`\nInstalling [${chosen.join(', ')}] into ${agent} (${TARGETS[agent]})\n`);
   const installed = chosen.map((s) => installSkill(s, TARGETS[agent], args.symlink));
 
+  // Ensure declared runtime requirements (e.g. PowerShell 7) for each installed skill
+  for (const dir of installed) await ensureRequirements(dir, args.yes);
+
   // Ensure Python is present for any skill that needs it (.py scripts or a python auth command).
   let py = null;
   if (chosen.some(skillNeedsPython)) {
@@ -268,6 +407,9 @@ async function main() {
     if (args.auth) await maybeRunAuth(dir, true, py);
     else if (!args.yes) await maybeRunAuth(dir, false, py);
   }
+
+  // Offer to update other already-installed skills whose repo version changed
+  await updateOutdated(TARGETS[agent], chosen, args.yes);
 
   console.log('\nDone.');
   console.log('Skills needing secrets ship config.example.json — or run with --auth to enter keys now.');
