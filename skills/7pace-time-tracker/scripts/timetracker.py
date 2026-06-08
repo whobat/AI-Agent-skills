@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-7pace Timetracker - API Client Script
+7pace Time Tracker - REST API client
 
-Kaldes direkte fra LLM-agenter for at:
-  - Oprette tidregistreringer (single-day eller batch)
-  - Opdatere eksisterende worklogs
-  - Slette worklogs
+Called directly by LLM agents to:
+  - Create time entries (single day or batch over a date range)
+  - Update existing worklogs
+  - Delete worklogs
+  - List worklogs (with ids)
+  - Search Azure DevOps work items by free text (to resolve a name -> id)
+  - Set up credentials interactively (--auth)
 
-Kræver:
-  - Python 3.7+
+Requires:
+  - Python 3.8+
   - requests (pip install requests)
-  - Azure DevOps PAT / basic auth
+  - A 7pace API token (Bearer). For --search also an Azure DevOps PAT.
 
-7pace API Reference:
-  https://timehub.7pace.com/api_reference/index.html
+7pace API reference: https://timehub.7pace.com/api_reference/index.html
 """
 
 import argparse
@@ -22,7 +24,6 @@ import datetime
 import json
 import os
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from urllib.parse import quote
@@ -30,23 +31,30 @@ from urllib.parse import quote
 import requests
 
 # ---------------------------------------------------------------------------
-# Konfiguration
+# Configuration
 # ---------------------------------------------------------------------------
 
 DEFAULT_BASE_URL = "https://dagrofa.timehub.7pace.com"
 API_VERSION = "3.2"
 DEFAULT_CONFIG_PATH = Path.home() / ".7pace" / "config.json"
 
+# English weekday tokens (abbreviation + full name) -> Python weekday() index (Mon=0)
 WEEKDAY_MAP = {
-    "man": 0, "mandag": 0,
-    "tir": 1, "tirsdag": 1,
-    "ons": 2, "onsdag": 2,
-    "tor": 3, "torsdag": 3,
-    "fre": 4, "fredag": 4,
-    "lør": 5, "lørdag": 5,
-    "søn": 6, "søndag": 6,
+    "mon": 0, "monday": 0,
+    "tue": 1, "tuesday": 1,
+    "wed": 2, "wednesday": 2,
+    "thu": 3, "thursday": 3,
+    "fri": 4, "friday": 4,
+    "sat": 5, "saturday": 5,
+    "sun": 6, "sunday": 6,
 }
-WEEKDAY_NAMES = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"]
+WEEKDAY_NAMES = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
 
 
 # ---------------------------------------------------------------------------
@@ -60,15 +68,14 @@ def load_config(config_path: Path) -> dict:
         with open(config_path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception as e:
-        print(f"Advarsel: Kunne ikke læse config-fil {config_path}: {e}", file=sys.stderr)
+        print(f"Warning: could not read config file {config_path}: {e}", file=sys.stderr)
         return {}
 
 
 def get_auth_from_config(config: dict) -> Tuple[str, Optional[str], Optional[str]]:
     auth = config.get("auth", {})
     auth_type = auth.get("type", "bearer").lower()
-    # 7pace Timetracker uses a Bearer API token (generated in Settings > Reporting & API).
-    # "token"/"bearer"/"pat" all resolve to a Bearer token here.
+    # 7pace authenticates with a Bearer API token. "token"/"bearer"/"pat" all resolve to a Bearer token.
     if auth_type in ("bearer", "token", "pat"):
         token = (auth.get("token") or auth.get("pat")
                  or os.environ.get("SEVENPACE_TOKEN") or os.environ.get("SEVENPACE_PAT"))
@@ -92,31 +99,36 @@ def resolve_config_value(args_value, config_key: str, env_key: str, config: dict
 def create_default_config(path: Path):
     template = {
         "auth": {
-            "type": "pat",
-            "pat": "DIT_AZURE_DEVOPS_PAT_TOKEN_HER"
+            "type": "bearer",
+            "token": "PASTE_7PACE_API_TOKEN_HERE"
         },
         "base_url": DEFAULT_BASE_URL,
         "api_version": API_VERSION,
+        "azure_devops": {
+            "pat": "PASTE_AZURE_DEVOPS_PAT_HERE",
+            "organization": "Dagrofa",
+            "project": None
+        },
         "defaults": {
             "work_item_id": 32933,
-            "comment": "Generelt arbejde"
+            "comment": "Work"
         }
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(template, f, indent=2, ensure_ascii=False)
-    print(f"Oprettede template config-fil: {path}")
-    print("Rediger filen og indtast din PAT token.")
+    print(f"Created template config file: {path}")
+    print("Edit the file and paste your tokens (or run --auth).")
     sys.exit(0)
 
 
 # ---------------------------------------------------------------------------
-# Interaktiv auth-opsætning (skriver nøgler til config)
+# Interactive auth setup (writes tokens to config)
 # ---------------------------------------------------------------------------
 
 def run_auth_setup(config_path: Path, reader=input, secret_reader=None) -> Path:
-    """Spørg interaktivt efter nøgler og gem dem i config_path.
-    `reader`/`secret_reader` kan injiceres i tests. Hemmeligheder læses skjult."""
+    """Prompt for credentials and save them to config_path.
+    `reader`/`secret_reader` can be injected in tests. Secrets are read hidden."""
     import getpass
     if secret_reader is None:
         secret_reader = getpass.getpass
@@ -125,23 +137,23 @@ def run_auth_setup(config_path: Path, reader=input, secret_reader=None) -> Path:
     ex_azdo = existing.get("azure_devops", {}) or {}
     ex_def = existing.get("defaults", {}) or {}
 
-    print(f"7pace Timetracker – opsætning. Config gemmes i: {config_path}")
-    acct = reader("Azure DevOps konto (fx 'dagrofa'), eller Enter for at indtaste fuld URL: ").strip()
+    print(f"7pace Time Tracker - setup. Config will be saved to: {config_path}")
+    acct = reader("Azure DevOps account name (e.g. 'dagrofa'), or Enter to type the full URL: ").strip()
     if acct:
         base_url = f"https://{acct}.timehub.7pace.com"
     else:
         default_base = existing.get("base_url", DEFAULT_BASE_URL)
         base_url = reader(f"7pace base URL [{default_base}]: ").strip() or default_base
 
-    token = secret_reader("7pace API token (Bearer, skjult): ").strip() or ex_auth.get("token", "")
-    org = reader(f"Azure DevOps organisation til søgning [{ex_azdo.get('organization', '')}]: ").strip() \
+    token = secret_reader("7pace API token (Bearer, hidden): ").strip() or ex_auth.get("token", "")
+    org = reader(f"Azure DevOps organization for search [{ex_azdo.get('organization', '')}]: ").strip() \
         or ex_azdo.get("organization", "")
-    azdo_pat = secret_reader("Azure DevOps PAT til søgning (valgfri, Enter=spring over): ").strip() \
+    azdo_pat = secret_reader("Azure DevOps PAT for search (optional, Enter to skip): ").strip() \
         or ex_azdo.get("pat", "")
-    project = reader("Begræns søgning til ét projekt (Enter = org-bredt): ").strip() or None
-    wi = reader(f"Standard work item ID (valgfri) [{ex_def.get('work_item_id', '')}]: ").strip()
-    comment = reader(f"Standard kommentar [{ex_def.get('comment', 'Arbejde')}]: ").strip() \
-        or ex_def.get("comment", "Arbejde")
+    project = reader("Limit search to one project (Enter = org-wide): ").strip() or None
+    wi = reader(f"Default work item ID (optional) [{ex_def.get('work_item_id', '')}]: ").strip()
+    comment = reader(f"Default comment [{ex_def.get('comment', 'Work')}]: ").strip() \
+        or ex_def.get("comment", "Work")
 
     cfg = {
         "auth": {"type": "bearer", "token": token},
@@ -163,46 +175,46 @@ def run_auth_setup(config_path: Path, reader=input, secret_reader=None) -> Path:
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
     try:
-        os.chmod(config_path, 0o600)  # best-effort på POSIX
+        os.chmod(config_path, 0o600)  # best-effort on POSIX
     except Exception:
         pass
     return config_path
 
 
 # ---------------------------------------------------------------------------
-# Hjælpefunktioner
+# Helpers
 # ---------------------------------------------------------------------------
 
-def parse_danish_date(date_str: str) -> datetime.date:
+def parse_date(date_str: str) -> datetime.date:
     date_str = date_str.strip().lower()
     today = datetime.date.today()
-    if date_str in ("dags dato", "idag", "i dag"):
+    if date_str in ("today", "now"):
         return today
-    danish_months = {
-        "januar": 1, "februar": 2, "marts": 3, "april": 4,
-        "maj": 5, "juni": 6, "juli": 7, "august": 8,
-        "september": 9, "oktober": 10, "november": 11, "december": 12,
-    }
-    if date_str in danish_months:
-        month = danish_months[date_str]
+    if date_str in ("yesterday",):
+        return today - datetime.timedelta(days=1)
+    if date_str in MONTHS:
+        month = MONTHS[date_str]
         year = today.year
         if month > today.month:
             year -= 1
         return datetime.date(year, month, 1)
-    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m-%Y", "%d/%m/%Y"):
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%d/%m-%Y"):
         try:
             return datetime.datetime.strptime(date_str, fmt).date()
         except ValueError:
             pass
-    raise ValueError(f"Kan ikke parse dato: {date_str}")
+    raise ValueError(f"Cannot parse date: {date_str}")
 
 
 def parse_weekday_hours(spec: str) -> Dict[int, float]:
+    """Parse a per-weekday hours spec, e.g. '7.5 mon-thu and 7.0 fri' or '7.5 all'."""
     result: Dict[int, float] = {}
     spec = spec.lower().strip()
-    if spec in ("alle", "alle hverdage", "alle dage"):
+    if spec in ("all", "all weekdays", "all days"):
         return {i: 7.5 for i in range(5)}
-    parts = [p.strip() for p in spec.split(" og ")]
+    # accept both 'and' (English) and 'og' (legacy) as the separator
+    spec = spec.replace(" og ", " and ")
+    parts = [p.strip() for p in spec.split(" and ")]
     for part in parts:
         tokens = part.split()
         if not tokens:
@@ -214,14 +226,14 @@ def parse_weekday_hours(spec: str) -> Dict[int, float]:
             start = WEEKDAY_MAP.get(start_str.strip())
             end = WEEKDAY_MAP.get(end_str.strip())
             if start is None or end is None:
-                raise ValueError(f"Ukendt ugedage interval: {day_spec}")
+                raise ValueError(f"Unknown weekday range: {day_spec}")
             for d in range(start, end + 1):
                 result[d] = hours
         else:
             for d in day_spec.replace(",", " ").split():
                 weekday = WEEKDAY_MAP.get(d.strip())
                 if weekday is None:
-                    raise ValueError(f"Ukendt ugedag: {d}")
+                    raise ValueError(f"Unknown weekday: {d}")
                 result[weekday] = hours
     return result
 
@@ -257,7 +269,48 @@ def _build_worklog_payload(date: datetime.date, hours: float, work_item_id: int,
 
 
 # ---------------------------------------------------------------------------
-# API Client
+# Azure DevOps work item search (free text -> id)
+# ---------------------------------------------------------------------------
+
+def azdo_search_work_items(text: str, pat: str, organization: str,
+                           project: Optional[str], top: int = 50) -> List[dict]:
+    """Search work items by free text in the title via Azure DevOps WIQL.
+    Returns a list of {id, title, type, state, project}. Requires an Azure DevOps PAT."""
+    safe = text.replace("'", "''")
+    where = f"[System.Title] CONTAINS '{safe}'"
+    if project:
+        where += f" AND [System.TeamProject] = '{project.replace(chr(39), chr(39) * 2)}'"
+    wiql = {"query": f"SELECT [System.Id] FROM workitems WHERE {where} "
+                     f"ORDER BY [System.ChangedDate] DESC"}
+    auth = ("", pat)
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    org_url = f"https://dev.azure.com/{organization}"
+    proj_seg = f"/{quote(project, safe='')}" if project else ""
+    r = requests.post(f"{org_url}{proj_seg}/_apis/wit/wiql?api-version=7.1",
+                      auth=auth, headers=headers, json=wiql, timeout=30)
+    r.raise_for_status()
+    ids = [w["id"] for w in r.json().get("workItems", [])][:top]
+    if not ids:
+        return []
+    ids_param = ",".join(str(i) for i in ids)
+    fields = "System.Id,System.Title,System.WorkItemType,System.State,System.TeamProject"
+    r2 = requests.get(
+        f"{org_url}/_apis/wit/workitems?ids={ids_param}&fields={fields}&api-version=7.1",
+        auth=auth, headers=headers, timeout=30)
+    r2.raise_for_status()
+    out = []
+    for it in r2.json().get("value", []):
+        f = it.get("fields", {})
+        out.append({"id": it.get("id"),
+                    "title": f.get("System.Title"),
+                    "type": f.get("System.WorkItemType"),
+                    "state": f.get("System.State"),
+                    "project": f.get("System.TeamProject")})
+    return out
+
+
+# ---------------------------------------------------------------------------
+# API client
 # ---------------------------------------------------------------------------
 
 class SevenPaceClient:
@@ -270,12 +323,12 @@ class SevenPaceClient:
         self.headers = {"Content-Type": "application/json", "Accept": "application/json"}
         self.auth = None
         if token:
-            # 7pace Timetracker authenticates with a Bearer API token.
+            # 7pace authenticates with a Bearer API token.
             self.headers["Authorization"] = f"Bearer {token}"
         elif username and password:
             self.auth = (username, password)
         else:
-            raise ValueError("Enten et 7pace API-token eller brugernavn/password skal angives")
+            raise ValueError("Provide either a 7pace API token or username/password")
 
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}?api-version={self.api_version}"
@@ -314,7 +367,7 @@ class SevenPaceClient:
         return resp.json()
 
     def create_worklogs_batch(self, entries: List[dict]) -> dict:
-        """entries: liste af dicts med timeStamp, length, workItemId, comment, etc."""
+        """entries: list of dicts with timeStamp, length, workItemId, comment, etc."""
         resp = requests.post(
             self._url("/api/rest/workLogs/batch"),
             auth=self.auth, headers=self.headers,
@@ -324,7 +377,7 @@ class SevenPaceClient:
         return resp.json()
 
     def update_worklog(self, worklog_id: str, **kwargs) -> dict:
-        """Opdaterer et worklog. kwargs kan være: timeStamp, length, workItemId, comment, activityTypeId, billableLength."""
+        """Update a worklog. kwargs may be: timeStamp, length, workItemId, comment, activityTypeId, billableLength."""
         resp = requests.patch(
             self._url(f"/api/rest/workLogs/{worklog_id}"),
             auth=self.auth, headers=self.headers,
@@ -339,138 +392,88 @@ class SevenPaceClient:
             auth=self.auth, headers=self.headers,
         )
         resp.raise_for_status()
-        # DELETE returns 204 No Content / empty body — don't try to parse JSON.
+        # DELETE returns 204 No Content / empty body - don't try to parse JSON.
         if resp.status_code == 204 or not resp.text.strip():
             return {"status": "deleted", "id": worklog_id}
         return resp.json()
 
 
 # ---------------------------------------------------------------------------
-# Azure DevOps work item søgning (fritekst -> ID)
-# ---------------------------------------------------------------------------
-
-def azdo_search_work_items(text: str, pat: str, organization: str,
-                           project: Optional[str], top: int = 50) -> List[dict]:
-    """Søg work items på fritekst i titel via Azure DevOps WIQL.
-    Returnerer liste af {id, title, type, state}. Kræver et Azure DevOps PAT."""
-    safe = text.replace("'", "''")
-    where = f"[System.Title] CONTAINS '{safe}'"
-    if project:
-        where += f" AND [System.TeamProject] = '{project.replace(chr(39), chr(39) * 2)}'"
-    wiql = {"query": f"SELECT [System.Id] FROM workitems WHERE {where} "
-                     f"ORDER BY [System.ChangedDate] DESC"}
-    auth = ("", pat)
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
-    org_url = f"https://dev.azure.com/{organization}"
-    proj_seg = f"/{quote(project, safe='')}" if project else ""
-    r = requests.post(f"{org_url}{proj_seg}/_apis/wit/wiql?api-version=7.1",
-                      auth=auth, headers=headers, json=wiql, timeout=30)
-    r.raise_for_status()
-    ids = [w["id"] for w in r.json().get("workItems", [])][:top]
-    if not ids:
-        return []
-    ids_param = ",".join(str(i) for i in ids)
-    fields = "System.Id,System.Title,System.WorkItemType,System.State,System.TeamProject"
-    r2 = requests.get(
-        f"{org_url}/_apis/wit/workitems?ids={ids_param}&fields={fields}&api-version=7.1",
-        auth=auth, headers=headers, timeout=30)
-    r2.raise_for_status()
-    out = []
-    for it in r2.json().get("value", []):
-        f = it.get("fields", {})
-        out.append({"id": it.get("id"),
-                    "title": f.get("System.Title"),
-                    "type": f.get("System.WorkItemType"),
-                    "state": f.get("System.State"),
-                    "project": f.get("System.TeamProject")})
-    return out
-
-
-# ---------------------------------------------------------------------------
-# Hoved-program
+# Main program
 # ---------------------------------------------------------------------------
 
 def main():
     parser = argparse.ArgumentParser(
-        description="7pace Timetracker API klient",
+        description="7pace Time Tracker API client",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Eksempler:
-  # Opret enkelt entry
-  python tidsregistrering.py --date "dags dato" --hours 7.5 \\
-      --work-item 32933 --comment "Arbejde" --yes --json
+Examples:
+  # Single day
+  python timetracker.py --date 2026-04-09 --hours 4 \\
+      --work-item 32933 --comment "Work" --yes --json
 
-  # Opret batch
-  python tidsregistrering.py --from "april" --to "dags dato" \\
-      --hours "7.5 man-tor og 7.0 fre" \\
-      --work-item 32933 --comment "Arbejde" --yes
+  # Date range with a per-weekday pattern
+  python timetracker.py --from 2026-04-01 --to today \\
+      --hours "7.5 mon-thu and 7.0 fri" \\
+      --work-item 32933 --comment "Work" --yes --json
 
-  # Opdater eksisterende worklog
-  python tidsregistrering.py --update WORKLOG_ID --hours 8.0 --yes --json
+  # Search a work item by name
+  python timetracker.py --search "Nordisk Film" --json
 
-  # Slet worklog
-  python tidsregistrering.py --delete WORKLOG_ID --yes --json
+  # Update / delete
+  python timetracker.py --update WORKLOG_ID --hours 8 --yes --json
+  python timetracker.py --delete WORKLOG_ID --yes --json
 
-  # Opret config template
-  python tidsregistrering.py --init-config
+  # First-time credential setup
+  python timetracker.py --auth
         """
     )
 
-    # Dato / timer
+    # Date / hours
     parser.add_argument("--date", "-d", default=None,
-                        help="Enkelt dato (f.eks. '2024-06-08', 'dags dato')")
+                        help="Single date (e.g. '2026-04-09', 'today')")
     parser.add_argument("--from", "-f", dest="start_date", default=None,
-                        help="Startdato (batch mode)")
+                        help="Start date (batch mode)")
     parser.add_argument("--to", "-t", dest="end_date", default=None,
-                        help="Slutdato (batch mode)")
+                        help="End date (batch mode)")
     parser.add_argument("--hours", "-H", default=None,
-                        help="Timer (batch: '7.5 man-tor og 7.0 fre', single: 7.5)")
+                        help="Hours (single: 7.5; batch: '7.5 mon-thu and 7.0 fri')")
 
     # Worklog data
-    parser.add_argument("--work-item", "-w", type=int, default=None,
-                        help="Work item ID")
-    parser.add_argument("--comment", "-c", default=None,
-                        help="Kommentar")
-    parser.add_argument("--activity-type-id", default=None,
-                        help="Activity type UUID")
+    parser.add_argument("--work-item", "-w", type=int, default=None, help="Work item ID")
+    parser.add_argument("--comment", "-c", default=None, help="Comment")
+    parser.add_argument("--activity-type-id", default=None, help="Activity type UUID")
 
-    # CRUD operationer
-    parser.add_argument("--update", default=None,
-                        help="Worklog ID at opdatere")
-    parser.add_argument("--delete", dest="delete_id", default=None,
-                        help="Worklog ID at slette")
+    # CRUD operations
+    parser.add_argument("--update", default=None, help="Worklog ID to update")
+    parser.add_argument("--delete", dest="delete_id", default=None, help="Worklog ID to delete")
     parser.add_argument("--list", dest="list_mode", action="store_true",
-                        help="List worklogs i interval (--date eller --from/--to) med id'er")
+                        help="List worklogs in a range (--date or --from/--to) with ids")
     parser.add_argument("--search", default=None,
-                        help="Søg work items på fritekst i titel (returnerer matchende id'er)")
+                        help="Search work items by free text in the title (returns matching ids)")
     parser.add_argument("--azdo-pat", default=None,
-                        help="Azure DevOps PAT til work item-søgning (overstyrer config)")
+                        help="Azure DevOps PAT for work item search (overrides config)")
     parser.add_argument("--project", default=None,
-                        help="Begræns --search til ét ADO-projekt (default: org-bred på tværs af alle projekter)")
+                        help="Limit --search to one ADO project (default: org-wide across all projects)")
 
     # Auth
-    parser.add_argument("--pat", "-p", default=None, help="PAT token")
-    parser.add_argument("--username", "-U", default=None, help="Basic auth brugernavn")
+    parser.add_argument("--pat", "-p", default=None, help="7pace Bearer token")
+    parser.add_argument("--token", default=None, help="7pace Bearer token (alias of --pat)")
+    parser.add_argument("--username", "-U", default=None, help="Basic auth username")
     parser.add_argument("--password", "-P", default=None, help="Basic auth password")
     parser.add_argument("--base-url", "-u", default=None, help="API base URL")
-    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH),
-                        help="Sti til config-fil")
-    parser.add_argument("--init-config", action="store_true",
-                        help="Opret template config-fil")
+    parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to config file")
+    parser.add_argument("--init-config", action="store_true", help="Create a template config file")
     parser.add_argument("--auth", action="store_true",
-                        help="Interaktiv opsætning: indtast nøgler (skjult) og gem dem i config")
+                        help="Interactive setup: enter credentials (hidden) and save them to config")
 
     # Behavior
-    parser.add_argument("--yes", "-y", action="store_true",
-                        help="Bekræft automatisk (ingen prompt)")
-    parser.add_argument("--json", "-j", action="store_true",
-                        help="Output som JSON")
-    parser.add_argument("--dry-run", action="store_true",
-                        help="Simuler uden at oprette")
+    parser.add_argument("--yes", "-y", action="store_true", help="Confirm automatically (no prompt)")
+    parser.add_argument("--json", "-j", action="store_true", help="Output as JSON")
+    parser.add_argument("--dry-run", action="store_true", help="Simulate without creating")
     parser.add_argument("--skip-existing", action="store_true", default=True,
-                        help="Spring over dage med eksisterende tid")
-    parser.add_argument("--no-skip-existing", action="store_true",
-                        help="Overskriv eksisterende")
+                        help="Skip days that already have time")
+    parser.add_argument("--no-skip-existing", action="store_true", help="Overwrite existing")
 
     args = parser.parse_args()
 
@@ -487,27 +490,27 @@ Eksempler:
     api_version = resolve_config_value(None, "api_version", "SEVENPACE_API_VERSION",
                                        config, API_VERSION)
 
-    # SEARCH mode (Azure DevOps work item fritekst-søgning) — kræver kun et ADO PAT, ikke 7pace-token
+    # SEARCH mode (Azure DevOps work item free-text search) - needs only an ADO PAT, not the 7pace token
     if args.search is not None:
         azdo = config.get("azure_devops", {})
         azdo_pat = args.azdo_pat or azdo.get("pat") or os.environ.get("AZDO_PAT")
         azdo_org = azdo.get("organization") or "Dagrofa"
-        # --project overstyrer config; ellers config (null = org-bred, anbefalet default)
         azdo_project = args.project if args.project is not None else azdo.get("project")
         if not azdo_pat:
-            _error("Søgning kræver et Azure DevOps PAT. Tilføj 'azure_devops.pat' i config "
-                   "eller sæt AZDO_PAT miljøvariabel.", args.json)
+            _error("Search requires an Azure DevOps PAT. Add 'azure_devops.pat' to config "
+                   "or set the AZDO_PAT environment variable.", args.json)
         try:
             matches = azdo_search_work_items(args.search, azdo_pat, azdo_org, azdo_project)
         except Exception as e:
-            _error(f"Søgning fejlet: {e}", args.json)
+            _error(f"Search failed: {e}", args.json)
         _ok({"status": "ok", "query": args.search, "count": len(matches),
              "matches": matches}, args.json)
         return
 
     auth_type, auth_user, auth_pw = get_auth_from_config(config)
-    if args.pat:
-        auth_type, auth_user, auth_pw = "pat", args.pat, None
+    token_arg = args.pat or args.token
+    if token_arg:
+        auth_type, auth_user, auth_pw = "bearer", token_arg, None
     elif args.username and args.password:
         auth_type, auth_user, auth_pw = "basic", args.username, args.password
     elif args.username:
@@ -516,8 +519,8 @@ Eksempler:
             auth_type, auth_user, auth_pw = "basic", args.username, pw
 
     if not auth_user:
-        _error("Ingen autentificering konfigureret. Brug --pat, --username/--password, "
-               "SEVENPACE_PAT miljøvariabel, eller config-fil.", args.json)
+        _error("No authentication configured. Use --auth, --pat/--token, --username/--password, "
+               "the SEVENPACE_TOKEN environment variable, or a config file.", args.json)
 
     defaults = config.get("defaults", {})
     work_item = resolve_config_value(args.work_item, "work_item_id", "SEVENPACE_WORK_ITEM",
@@ -534,27 +537,26 @@ Eksempler:
 
     # Auth check
     try:
-        me = client.get_me()
-        user = me.get("data", {}).get("user", {})
+        client.get_me()
     except Exception as e:
-        _error(f"Kunne ikke forbinde: {e}", args.json)
+        _error(f"Could not connect: {e}", args.json)
 
     # LIST mode
     if args.list_mode:
         try:
             if args.date:
-                ls = le = parse_danish_date(args.date)
+                ls = le = parse_date(args.date)
             elif args.start_date and args.end_date:
-                ls = parse_danish_date(args.start_date)
-                le = parse_danish_date(args.end_date)
+                ls = parse_date(args.start_date)
+                le = parse_date(args.end_date)
             else:
-                _error("--list kræver --date eller --from/--to", args.json)
+                _error("--list requires --date or --from/--to", args.json)
         except ValueError as e:
             _error(str(e), args.json)
         try:
             wls = client.get_worklogs(ls, le)
         except Exception as e:
-            _error(f"Kunne ikke hente worklogs: {e}", args.json)
+            _error(f"Could not fetch worklogs: {e}", args.json)
         out = [{"id": w.get("id"),
                 "date": (w.get("timestamp") or w.get("timeStamp") or "")[:10],
                 "hours": w.get("length", 0) / 3600,
@@ -566,26 +568,26 @@ Eksempler:
     # DELETE mode
     if args.delete_id:
         if not args.yes:
-            _error("--delete kræver --yes for at bekræfte", args.json)
+            _error("--delete requires --yes to confirm", args.json)
         if args.dry_run:
             _ok({"status": "dry_run", "action": "delete", "worklog_id": args.delete_id}, args.json)
         try:
             client.delete_worklog(args.delete_id)
             _ok({"status": "deleted", "worklog_id": args.delete_id}, args.json)
         except Exception as e:
-            _error(f"Sletning fejlet: {e}", args.json)
+            _error(f"Delete failed: {e}", args.json)
         return
 
     # UPDATE mode
     if args.update:
         if not args.yes:
-            _error("--update kræver --yes for at bekræfte", args.json)
+            _error("--update requires --yes to confirm", args.json)
         if not args.hours:
-            _error("--update kræver --hours", args.json)
+            _error("--update requires --hours", args.json)
         try:
             hours = float(args.hours.replace(",", ".").replace(":", "."))
         except ValueError:
-            _error(f"Ugyldigt timeantal: {args.hours}", args.json)
+            _error(f"Invalid hours value: {args.hours}", args.json)
         if args.dry_run:
             _ok({"status": "dry_run", "action": "update", "worklog_id": args.update,
                  "hours": hours}, args.json)
@@ -600,7 +602,7 @@ Eksempler:
             result = client.update_worklog(args.update, **payload)
             _ok({"status": "updated", "worklog_id": args.update, "data": result.get("data", {})}, args.json)
         except Exception as e:
-            _error(f"Opdatering fejlet: {e}", args.json)
+            _error(f"Update failed: {e}", args.json)
         return
 
     # CREATE mode (single or batch)
@@ -608,42 +610,41 @@ Eksempler:
     batch_mode = bool(args.start_date and args.end_date)
 
     if not single_mode and not batch_mode:
-        _error("Angiv enten --date (single) eller --from + --to (batch)", args.json)
-
+        _error("Provide either --date (single) or --from + --to (batch)", args.json)
     if not work_item:
-        _error("--work-item er påkrævet", args.json)
+        _error("--work-item is required", args.json)
     if not comment:
-        _error("--comment er påkrævet", args.json)
+        _error("--comment is required", args.json)
     if not args.hours:
-        _error("--hours er påkrævet", args.json)
+        _error("--hours is required", args.json)
 
     if single_mode:
         try:
-            target_date = parse_danish_date(args.date)
+            target_date = parse_date(args.date)
         except ValueError as e:
             _error(str(e), args.json)
         try:
             hours = float(args.hours.replace(",", ".").replace(":", "."))
         except ValueError:
-            _error(f"Ugyldigt timeantal: {args.hours}", args.json)
+            _error(f"Invalid hours value: {args.hours}", args.json)
         days = [(target_date, hours)]
         start_date = end_date = target_date
     else:
         try:
-            start_date = parse_danish_date(args.start_date)
-            end_date = parse_danish_date(args.end_date)
+            start_date = parse_date(args.start_date)
+            end_date = parse_date(args.end_date)
         except ValueError as e:
             _error(str(e), args.json)
         if start_date > end_date:
-            _error("Startdato kan ikke være efter slutdato", args.json)
+            _error("Start date cannot be after end date", args.json)
         try:
             weekday_hours = parse_weekday_hours(args.hours)
         except ValueError as e:
-            _error(f"Fejl i timer-specifikation: {e}", args.json)
+            _error(f"Error in hours spec: {e}", args.json)
         days = get_weekdays(start_date, end_date, weekday_hours)
 
     if not days:
-        _ok({"status": "nothing_to_do", "message": "Ingen dage at registrere"}, args.json)
+        _ok({"status": "nothing_to_do", "message": "No days to register"}, args.json)
 
     # Check existing
     skip_existing = args.skip_existing and not args.no_skip_existing
@@ -661,7 +662,7 @@ Eksempler:
             try:
                 dt = datetime.datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                 existing_dates.add(dt.date())
-            except:
+            except Exception:
                 pass
 
     # Build entries
@@ -687,14 +688,14 @@ Eksempler:
 
     # Confirm
     if not args.yes and not args.json:
-        print(f"Oprettelse af {len(entries_to_create)} tidregistreringer")
+        print(f"About to create {len(entries_to_create)} time entries")
         if entries_to_create:
-            print(f"Første: {entries_to_create[0]['timeStamp'][:10]} ({entries_to_create[0]['length'] / 3600} timer)")
+            print(f"First: {entries_to_create[0]['timeStamp'][:10]} ({entries_to_create[0]['length'] / 3600} hours)")
             if len(entries_to_create) > 1:
-                print(f"Sidste: {entries_to_create[-1]['timeStamp'][:10]} ({entries_to_create[-1]['length'] / 3600} timer)")
-        confirm = input("Bekræft (ja/nej): ").strip().lower()
-        if confirm not in ("ja", "j", "yes", "y"):
-            print("Afbrudt.")
+                print(f"Last:  {entries_to_create[-1]['timeStamp'][:10]} ({entries_to_create[-1]['length'] / 3600} hours)")
+        confirm = input("Confirm (yes/no): ").strip().lower()
+        if confirm not in ("yes", "y"):
+            print("Aborted.")
             sys.exit(0)
 
     # Create
@@ -703,7 +704,7 @@ Eksempler:
     try:
         if len(entries_to_create) > 1:
             if not args.json:
-                print(f"Opretter {len(entries_to_create)} registreringer via batch API...")
+                print(f"Creating {len(entries_to_create)} entries via batch API...")
             result = client.create_worklogs_batch(entries_to_create)
             success = result.get("data", [])
         else:
@@ -721,7 +722,7 @@ Eksempler:
                     failed.append((entry["timeStamp"][:10], str(e)))
     except Exception as e:
         if not args.json:
-            print(f"Batch fejl: {e}, forsøger enkeltvis...")
+            print(f"Batch error: {e}, retrying one by one...")
         for entry in entries_to_create:
             try:
                 result = client.create_worklog(
@@ -749,10 +750,10 @@ Eksempler:
             "failures": [{"date": d, "error": err} for d, err in failed],
         }, args.json)
     else:
-        print(f"\nOprettet: {len(success)} | Fejlet: {len(failed)} | Sprunget over: {len(skipped)} | Total: {total_hours} timer")
+        print(f"\nCreated: {len(success)} | Failed: {len(failed)} | Skipped: {len(skipped)} | Total: {total_hours} hours")
         if failed:
             for d, err in failed:
-                print(f"  ✗ {d}: {err}")
+                print(f"  x {d}: {err}")
             sys.exit(1)
 
 
@@ -769,7 +770,7 @@ def _error(msg: str, json_output: bool):
     if json_output:
         print(json.dumps({"status": "error", "message": msg}, ensure_ascii=False))
     else:
-        print(f"Fejl: {msg}", file=sys.stderr)
+        print(f"Error: {msg}", file=sys.stderr)
     sys.exit(1)
 
 

@@ -1,20 +1,20 @@
 ---
-name: 7pace-tidsregistrering
-description: 7pace Timetracker (Azure DevOps) time tracking — create/edit/delete worklogs in 7pace for the Dagrofa "IT Infrastruktur" org, on a SINGLE day or across a range of weekdays. Primary path is the bundled Python 7pace REST API script (fast, no UI); browser UI automation of 7pace is a fallback. Use when the user wants to log/register work hours in 7pace on a work item (by numeric ID or by name) — e.g. "register 4 hours on #32933 on 9 April 2026", "log 7.5h today on Nordisk Film", or "7:30 Mon–Thu and 7:00 Fri from April to today". Also triggers on Danish phrasings the user may type: "registrer tid", "log timer", "bogfør timer", "tidsregistrering", "7pace".
+name: 7pace-time-tracker
+description: 7pace Time Tracker (Azure DevOps) — create/edit/delete worklogs in 7pace for the Dagrofa "IT Infrastruktur" org, on a SINGLE day or across a range of weekdays. Primary path is the bundled Python 7pace REST API script (fast, no UI); browser UI automation of 7pace is a fallback. Use when the user wants to log/register/track work hours in 7pace on a work item (by numeric ID or by name) — e.g. "register 4 hours on #32933 on 9 April 2026", "log 7.5h today on Nordisk Film", or "7:30 Mon–Thu and 7:00 Fri from April to today".
 ---
 
-# 7pace Timetracker — Time Registration (Dagrofa)
+# 7pace Time Tracker (Dagrofa)
 
 > **This skill targets [7pace Timetracker](https://www.7pace.com/) for Azure DevOps.** All time entries (worklogs) are created in 7pace via its REST API at `https://<org>.timehub.7pace.com`.
 
-Creates / updates / deletes worklogs in 7pace. **Prefer the API script** (`scripts/tidsregistrering.py`) — it calls the 7pace REST API directly and is far cheaper than driving the UI. Fall back to the browser UI only if no API token is available.
+Creates / updates / deletes worklogs in 7pace. **Prefer the API script** (`scripts/timetracker.py`) — it calls the 7pace REST API directly and is far cheaper than driving the UI. Fall back to the browser UI only if no API token is available.
 
 It supports **two modes**:
 
 - **Single day** — one entry on one date: `--date <date> --hours <H>`.
 - **Range of weekdays** — batch across a period with a per-weekday pattern: `--from <start> --to <end> --hours "<pattern>"` (weekends are skipped automatically).
 
-`SCRIPT` = this skill's `scripts/tidsregistrering.py`. Config lives at `~/.7pace/config.json` (the default — `--config <path>` only needed to override). Always pass `--yes --json` for automation.
+`SCRIPT` = this skill's `scripts/timetracker.py`. Config lives at `~/.7pace/config.json` (the default — `--config <path>` only needed to override). Always pass `--yes --json` for automation.
 
 ## First-time setup (once)
 
@@ -24,41 +24,41 @@ It supports **two modes**:
 
 | Input | How to pass | Notes |
 |-------|-------------|-------|
-| **One date** | `--date 2026-04-09` | Single-day mode. Accepts `YYYY-MM-DD`, `DD-MM-YYYY`, or `dags dato` (= today). Convert relative dates ("today", "yesterday", "last Friday") to an absolute `YYYY-MM-DD` yourself. |
-| **Date range** | `--from 2026-04-01 --to 2026-06-08` | Batch mode. Same date formats; `--to "dags dato"` = up to today. |
+| **One date** | `--date 2026-04-09` | Single-day mode. Accepts `YYYY-MM-DD`, `DD-MM-YYYY`, `today`, or `yesterday`. Convert other relative dates ("last Friday") to an absolute `YYYY-MM-DD` yourself. |
+| **Date range** | `--from 2026-04-01 --to 2026-06-08` | Batch mode. Same date formats; `--to today` = up to today. |
 | **Hours (single)** | `--hours 4` or `--hours 7:30` | Decimal or `HH:MM`; comma or dot both work (`7,5` = `7.5` = `7:30`). |
-| **Hours (range)** | `--hours "7.5 man-tor og 7.0 fre"` | Per-weekday pattern. Weekday tokens are Danish: `man tir ons tor fre` (`lør søn` for weekend). Only the named days are created, so Sat/Sun are skipped. `alle` = all weekdays. |
-| **Comment** | `--comment "work"` | Mandatory — 7pace rejects empty comments. |
+| **Hours (range)** | `--hours "7.5 mon-thu and 7.0 fri"` | Per-weekday pattern. Weekday tokens: `mon tue wed thu fri sat sun` (or full names). Only the named days are created, so Sat/Sun are skipped. `all` = all weekdays. |
+| **Comment** | `--comment "Work"` | Mandatory — 7pace rejects empty comments. |
 | **Work item** | `--work-item 32933` | Numeric ID. If the user gives a **name** instead, resolve it with `--search` first (see Examples). |
 
 ## Holidays
 
-Danish public holidays that fall on a weekday must be booked on work item **#840 "Ikke-arbejdstid"** with comment **"Helligdag"** (same hours as a normal day) — NOT the normal work item. In-scope holidays: Skærtorsdag, Langfredag, 2. påskedag, Kr. Himmelfart, 2. pinsedag, 1. nytårsdag, 1.+2. juledag. **Store Bededag is abolished (2024+) and Grundlovsdag (5 Jun) is not an official holiday** — treat both as normal workdays unless told otherwise. If a holiday already has time logged, flag it instead of duplicating.
+Danish public holidays that fall on a weekday must be booked on work item **#840 "Ikke-arbejdstid"** (non-working time) with comment **"Helligdag"** (same hours as a normal day) — NOT the normal work item. In-scope holidays: Maundy Thursday, Good Friday, Easter Monday, Ascension Day, Whit Monday, New Year's Day, Christmas Day + Boxing Day. **Store Bededag is abolished (2024+) and Constitution Day (5 Jun) is not an official holiday** — treat both as normal workdays unless told otherwise. If a holiday already has time logged, flag it instead of duplicating.
 
 ## Examples
 
 > Replace dates/IDs/hours with the user's actual request. `--json` returns machine-readable output you can parse and report back.
 
-**1. Single day, known work item** (e.g. "register 4 hours on #32933 on 9 April 2026"):
+**1. Single day, known work item** ("register 4 hours on #32933 on 9 April 2026"):
 ```
-python SCRIPT --date 2026-04-09 --hours 4 --work-item 32933 --comment "work" --yes --json
+python SCRIPT --date 2026-04-09 --hours 4 --work-item 32933 --comment "Work" --yes --json
 ```
 
 **2. Single day = today** ("log 7.5 hours today on #32933"):
 ```
-python SCRIPT --date "dags dato" --hours 7.5 --work-item 32933 --comment "work" --yes --json
+python SCRIPT --date today --hours 7.5 --work-item 32933 --comment "Work" --yes --json
 ```
 
 **3. Register by project NAME** ("log 7:30 today on Nordisk Film") — search → pick → create:
 ```
 python SCRIPT --search "Nordisk Film" --json          # returns matches with id/title/project/state
 # 1 match → use it. Multiple → ask the user which id (show title — project — state). 0 → tell them.
-python SCRIPT --date "dags dato" --hours 7:30 --work-item <id> --comment "work" --yes --json
+python SCRIPT --date today --hours 7:30 --work-item <id> --comment "Work" --yes --json
 ```
 
 **4. Date range with a weekday pattern** ("7:30 Mon–Thu and 7:00 Fri from 1 April to today"):
 ```
-python SCRIPT --from 2026-04-01 --to "dags dato" --hours "7.5 man-tor og 7.0 fre" --work-item 32933 --comment "work" --yes --json
+python SCRIPT --from 2026-04-01 --to today --hours "7.5 mon-thu and 7.0 fri" --work-item 32933 --comment "Work" --yes --json
 ```
 Weekends are skipped automatically; days that already have time are skipped by default (`--no-skip-existing` to override).
 
@@ -70,13 +70,13 @@ python SCRIPT --date 2026-05-14 --hours 7.5 --work-item 840 --comment "Helligdag
 **6. List, update, delete** (find an entry's id, change it, or remove it):
 ```
 python SCRIPT --date 2026-04-09 --list --json                                  # -> worklogs with ids
-python SCRIPT --update <id> --hours 8 --work-item 32933 --comment "work" --yes --json
+python SCRIPT --update <id> --hours 8 --work-item 32933 --comment "Work" --yes --json
 python SCRIPT --delete <id> --yes --json
 ```
 
 **7. Dry-run / health check** (verify auth + connection, creates nothing):
 ```
-python SCRIPT --date "dags dato" --hours 0 --dry-run --json     # expect status: dry_run
+python SCRIPT --date today --hours 0 --dry-run --json     # expect status: dry_run
 ```
 
 ## Workflow for a bulk range (steps)
@@ -84,7 +84,7 @@ python SCRIPT --date "dags dato" --hours 0 --dry-run --json     # expect status:
 1. **Confirm the plan first** (day count, total hours, work item, comment) — a range can be 40+ entries.
 2. **Health check** (Example 7) → expect `status: dry_run`.
 3. **Batch create** the range (Example 4).
-4. **Holidays**: the batch also creates entries on holiday *weekdays*. For each Danish holiday in range, convert it: `--date <holiday> --list` to get the `id`, then `--update <id> --work-item 840 --comment "Helligdag" --hours <h> --yes`. (`--update` sets the work item from `--work-item`; always pass it so you don't reset it.)
+4. **Holidays**: the batch also creates entries on holiday *weekdays*. For each holiday in range, convert it: `--date <holiday> --list` to get the `id`, then `--update <id> --work-item 840 --comment "Helligdag" --hours <h> --yes`. (`--update` sets the work item from `--work-item`; always pass it so you don't reset it.)
 5. **MANDATORY final validation** (always last): `--from <start> --to <end> --list --json` and confirm **every weekday in range has an entry** — normal work item on regular days, #840 on holiday weekdays. The only acceptable blanks are weekends and pre-existing days you intentionally left. Any other blank weekday is a gap → fix and re-list. Don't declare done until clean.
 6. **Report**: days created (date+hours), holidays converted, days skipped (weekend/holiday/existing), totals, and "validation: every weekday accounted for". Fail loud on any gap or `status: error`/`partial`.
 

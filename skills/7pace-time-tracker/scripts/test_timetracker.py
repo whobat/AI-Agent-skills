@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Tests for tidsregistrering.py
+Tests for timetracker.py
 
-Kør unit-tests (ingen netværk):
-    python -m unittest test_tidsregistrering -v
+Unit tests (no network):
+    python -m unittest test_timetracker -v
 
-Kør ALT inkl. integration mod den rigtige 7pace/ADO API (kræver gyldig config.json):
-    RUN_INTEGRATION=1 python -m unittest test_tidsregistrering -v
-    (Windows PowerShell:  $env:RUN_INTEGRATION=1; python -m unittest test_tidsregistrering -v)
+All tests incl. live 7pace/ADO API (needs a valid config.json):
+    RUN_INTEGRATION=1 python -m unittest test_timetracker -v
+    (PowerShell:  $env:RUN_INTEGRATION=1; python -m unittest test_timetracker -v)
 
-Integrationstests opretter/sletter KUN på en sikker fremtidig testdato (2031-12-31)
-og rydder op efter sig.
+Integration tests create/delete only on a safe future date (2031-12-31) and clean up.
 """
 
 import datetime
@@ -20,70 +19,72 @@ import os
 import unittest
 from pathlib import Path
 
-import tidsregistrering as tr
+import timetracker as tr
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
-TEST_DATE = datetime.date(2031, 12, 31)   # langt ude i fremtiden -> kolliderer ikke med rigtige data
-TEST_WORK_ITEM = 32933                     # IT Infrastruktur - Generel DGFS
-MARKER = "UNITTEST – maa slettes"
+TEST_DATE = datetime.date(2031, 12, 31)
+TEST_WORK_ITEM = 32933
+MARKER = "UNITTEST - safe to delete"
 
 
 # ===========================================================================
-# UNIT TESTS (ingen netværk)
+# UNIT TESTS (no network)
 # ===========================================================================
 
-class TestParseDanishDate(unittest.TestCase):
+class TestParseDate(unittest.TestCase):
     def test_iso(self):
-        self.assertEqual(tr.parse_danish_date("2026-06-08"), datetime.date(2026, 6, 8))
+        self.assertEqual(tr.parse_date("2026-06-08"), datetime.date(2026, 6, 8))
 
-    def test_dk_formats(self):
-        self.assertEqual(tr.parse_danish_date("08-06-2026"), datetime.date(2026, 6, 8))
-        self.assertEqual(tr.parse_danish_date("08/06/2026"), datetime.date(2026, 6, 8))
+    def test_eu_formats(self):
+        self.assertEqual(tr.parse_date("08-06-2026"), datetime.date(2026, 6, 8))
+        self.assertEqual(tr.parse_date("08/06/2026"), datetime.date(2026, 6, 8))
 
-    def test_today_aliases(self):
+    def test_today_yesterday(self):
         today = datetime.date.today()
-        for alias in ("dags dato", "idag", "i dag", "DAGS DATO"):
-            self.assertEqual(tr.parse_danish_date(alias), today)
+        self.assertEqual(tr.parse_date("today"), today)
+        self.assertEqual(tr.parse_date("TODAY"), today)
+        self.assertEqual(tr.parse_date("yesterday"), today - datetime.timedelta(days=1))
 
     def test_month_name(self):
-        d = tr.parse_danish_date("april")
+        d = tr.parse_date("april")
         self.assertEqual((d.month, d.day), (4, 1))
 
     def test_invalid(self):
         with self.assertRaises(ValueError):
-            tr.parse_danish_date("ikke en dato")
+            tr.parse_date("not a date")
 
 
 class TestParseWeekdayHours(unittest.TestCase):
-    def test_alle(self):
-        self.assertEqual(tr.parse_weekday_hours("alle"), {0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 4: 7.5})
+    def test_all(self):
+        self.assertEqual(tr.parse_weekday_hours("all"), {0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 4: 7.5})
 
     def test_range_and_single(self):
-        self.assertEqual(tr.parse_weekday_hours("7.5 man-tor og 7.0 fre"),
+        self.assertEqual(tr.parse_weekday_hours("7.5 mon-thu and 7.0 fri"),
                          {0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 4: 7.0})
 
-    def test_colon_and_comma_numbers(self):
-        # 7:30 -> 7.30? Nej: scriptet erstatter ':' med '.', så 7:30 => 7.30. HH:MM håndteres af CLI andetsteds.
-        self.assertEqual(tr.parse_weekday_hours("7,5 mandag,onsdag"), {0: 7.5, 2: 7.5})
+    def test_comma_days_and_numbers(self):
+        self.assertEqual(tr.parse_weekday_hours("7,5 monday,wednesday"), {0: 7.5, 2: 7.5})
+
+    def test_legacy_og_separator_still_works(self):
+        self.assertEqual(tr.parse_weekday_hours("7.5 mon-tue og 7.0 fri"),
+                         {0: 7.5, 1: 7.5, 4: 7.0})
 
     def test_invalid_weekday(self):
         with self.assertRaises(ValueError):
-            tr.parse_weekday_hours("7.5 xyzdag")
+            tr.parse_weekday_hours("7.5 funday")
 
 
 class TestGetWeekdays(unittest.TestCase):
     def test_skips_weekend(self):
-        # uge: man 2026-06-01 ... søn 2026-06-07
         wh = {0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 4: 7.0}
         days = tr.get_weekdays(datetime.date(2026, 6, 1), datetime.date(2026, 6, 7), wh)
         self.assertEqual(len(days), 5)
         weekdays = {d.weekday() for d, _ in days}
-        self.assertNotIn(5, weekdays)  # lør
-        self.assertNotIn(6, weekdays)  # søn
-        self.assertEqual(days[-1][1], 7.0)  # fredag = 7.0
+        self.assertNotIn(5, weekdays)
+        self.assertNotIn(6, weekdays)
+        self.assertEqual(days[-1][1], 7.0)
 
     def test_empty_range(self):
-        # kun en weekend
         days = tr.get_weekdays(datetime.date(2026, 6, 6), datetime.date(2026, 6, 7),
                                {0: 7.5, 1: 7.5, 2: 7.5, 3: 7.5, 4: 7.5})
         self.assertEqual(days, [])
@@ -91,13 +92,12 @@ class TestGetWeekdays(unittest.TestCase):
 
 class TestBuildPayload(unittest.TestCase):
     def test_basic(self):
-        p = tr._build_worklog_payload(datetime.date(2026, 6, 8), 7.5, 32933, "arbejde")
+        p = tr._build_worklog_payload(datetime.date(2026, 6, 8), 7.5, 32933, "work")
         self.assertEqual(p["timeStamp"], "2026-06-08T08:00:00")
-        self.assertEqual(p["length"], 27000)        # 7.5 * 3600
+        self.assertEqual(p["length"], 27000)
         self.assertEqual(p["workItemId"], 32933)
-        self.assertEqual(p["comment"], "arbejde")
+        self.assertEqual(p["comment"], "work")
         self.assertNotIn("billableLength", p)
-        self.assertNotIn("activityTypeId", p)
 
     def test_optional_fields(self):
         p = tr._build_worklog_payload(datetime.date(2026, 6, 8), 1, 1, "c",
@@ -112,7 +112,6 @@ class TestConfigAuth(unittest.TestCase):
                          ("bearer", "T", None))
 
     def test_pat_maps_to_bearer(self):
-        # gammelt "pat"-felt skal nu behandles som bearer-token
         self.assertEqual(tr.get_auth_from_config({"auth": {"type": "pat", "pat": "P"}}),
                          ("bearer", "P", None))
 
@@ -146,9 +145,9 @@ class TestClientUrlAndHeaders(unittest.TestCase):
 class TestAuthSetup(unittest.TestCase):
     def test_writes_config_from_prompts(self):
         import tempfile
-        # reader-svar i kaldsrækkefølge: konto, org, projekt(Enter), work item, kommentar
-        answers = iter(["dagrofa", "Dagrofa", "", "32933", "Arbejde"])
-        secrets = iter(["TOK7PACE", "ADOPAT"])  # 7pace-token, ADO-pat
+        # reader answers in order: account, org, project(Enter), work item, comment
+        answers = iter(["dagrofa", "Dagrofa", "", "32933", "Work"])
+        secrets = iter(["TOK7PACE", "ADOPAT"])
         with tempfile.TemporaryDirectory() as d:
             cfgp = Path(d) / "config.json"
             tr.run_auth_setup(cfgp, reader=lambda _p: next(answers),
@@ -160,24 +159,24 @@ class TestAuthSetup(unittest.TestCase):
         self.assertEqual(cfg["azure_devops"]["pat"], "ADOPAT")
         self.assertIsNone(cfg["azure_devops"]["project"])
         self.assertEqual(cfg["defaults"]["work_item_id"], 32933)
-        self.assertEqual(cfg["defaults"]["comment"], "Arbejde")
+        self.assertEqual(cfg["defaults"]["comment"], "Work")
 
     def test_full_url_and_skip_pat(self):
         import tempfile
         answers = iter(["", "https://acme.timehub.7pace.com", "Acme", "", "", "Work"])
-        secrets = iter(["T", ""])  # token, ingen ADO-pat
+        secrets = iter(["T", ""])
         with tempfile.TemporaryDirectory() as d:
             cfgp = Path(d) / "config.json"
             tr.run_auth_setup(cfgp, reader=lambda _p: next(answers),
                               secret_reader=lambda _p: next(secrets))
             cfg = json.loads(cfgp.read_text(encoding="utf-8"))
         self.assertEqual(cfg["base_url"], "https://acme.timehub.7pace.com")
-        self.assertNotIn("pat", cfg["azure_devops"])           # sprunget over
-        self.assertNotIn("work_item_id", cfg["defaults"])      # ikke angivet
+        self.assertNotIn("pat", cfg["azure_devops"])
+        self.assertNotIn("work_item_id", cfg["defaults"])
 
 
 # ===========================================================================
-# INTEGRATION TESTS (rigtig API) — gated bag RUN_INTEGRATION=1
+# INTEGRATION TESTS (live API) - gated behind RUN_INTEGRATION=1
 # ===========================================================================
 
 def _config():
@@ -200,7 +199,7 @@ _RUN = os.environ.get("RUN_INTEGRATION") == "1"
 _CFG = _config()
 
 
-@unittest.skipUnless(_RUN and _has_7pace_token(_CFG), "kræver RUN_INTEGRATION=1 og gyldigt 7pace-token")
+@unittest.skipUnless(_RUN and _has_7pace_token(_CFG), "needs RUN_INTEGRATION=1 and a valid 7pace token")
 class TestWorklogIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -219,31 +218,25 @@ class TestWorklogIntegration(unittest.TestCase):
         self._cleanup()
 
     def test_auth_me(self):
-        me = self.client.get_me()
-        self.assertIn("data", me)
+        self.assertIn("data", self.client.get_me())
 
     def test_create_list_update_delete(self):
-        # CREATE
         self.client.create_worklog(TEST_DATE, 1.0, TEST_WORK_ITEM, MARKER)
         wls = self.client.get_worklogs(TEST_DATE, TEST_DATE)
         mine = [w for w in wls if w.get("comment") == MARKER]
-        self.assertEqual(len(mine), 1, "præcis én oprettet entry forventet")
+        self.assertEqual(len(mine), 1)
         wid = mine[0]["id"]
-        self.assertEqual(mine[0]["length"], 3600)               # 1 time
-        # timestamp-nøglen (lowercase) skal kunne læses (skip-existing bug-fix)
+        self.assertEqual(mine[0]["length"], 3600)
         ts = mine[0].get("timestamp") or mine[0].get("timeStamp")
         self.assertTrue(str(ts).startswith("2031-12-31"))
-        # UPDATE
         self.client.update_worklog(wid, length=7200, comment=MARKER + " upd")
-        upd = self.client.get_worklogs(TEST_DATE, TEST_DATE)[0]
-        self.assertEqual(upd["length"], 7200)                   # 2 timer
-        # DELETE (tom 204-body må ikke crashe)
+        self.assertEqual(self.client.get_worklogs(TEST_DATE, TEST_DATE)[0]["length"], 7200)
         res = self.client.delete_worklog(wid)
         self.assertEqual(res.get("status"), "deleted")
         self.assertEqual(len(self.client.get_worklogs(TEST_DATE, TEST_DATE)), 0)
 
 
-@unittest.skipUnless(_RUN and _has_azdo_pat(_CFG), "kræver RUN_INTEGRATION=1 og gyldigt ADO PAT")
+@unittest.skipUnless(_RUN and _has_azdo_pat(_CFG), "needs RUN_INTEGRATION=1 and a valid ADO PAT")
 class TestSearchIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -254,11 +247,9 @@ class TestSearchIntegration(unittest.TestCase):
     def test_orgwide_finds_known(self):
         res = tr.azdo_search_work_items("Generel", self.pat, self.org, None)
         self.assertIn(32933, [m["id"] for m in res])
-        # output-felter til disambiguering
         self.assertTrue(all({"id", "title", "project", "state"} <= set(m) for m in res))
 
     def test_orgwide_finds_cross_project(self):
-        # #840 ligger i projektet "Administration" -> kun org-bred finder den
         res = tr.azdo_search_work_items("Ikke-arbejdstid", self.pat, self.org, None)
         self.assertIn(840, [m["id"] for m in res])
 
@@ -272,8 +263,7 @@ class TestSearchIntegration(unittest.TestCase):
         self.assertEqual(res, [])
 
     def test_zero_matches(self):
-        res = tr.azdo_search_work_items("zzz-findes-ikke-xyzqwerty", self.pat, self.org, None)
-        self.assertEqual(res, [])
+        self.assertEqual(tr.azdo_search_work_items("zzz-nonexistent-xyzqwerty", self.pat, self.org, None), [])
 
 
 if __name__ == "__main__":
