@@ -34,7 +34,7 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 
-DEFAULT_BASE_URL = "https://dagrofa.timehub.7pace.com"
+DEFAULT_BASE_URL = "https://xxx.timehub.7pace.com"
 API_VERSION = "3.2"
 DEFAULT_CONFIG_PATH = Path.home() / ".7pace" / "config.json"
 
@@ -106,7 +106,7 @@ def create_default_config(path: Path):
         "api_version": API_VERSION,
         "azure_devops": {
             "pat": "PASTE_AZURE_DEVOPS_PAT_HERE",
-            "organization": "Dagrofa",
+            "organization": "myCompany",
             "project": None
         },
         "defaults": {
@@ -138,7 +138,7 @@ def run_auth_setup(config_path: Path, reader=input, secret_reader=None) -> Path:
     ex_def = existing.get("defaults", {}) or {}
 
     print(f"7pace Time Tracker - setup. Config will be saved to: {config_path}")
-    acct = reader("Azure DevOps account name (e.g. 'dagrofa'), or Enter to type the full URL: ").strip()
+    acct = reader("Azure DevOps account name (e.g. 'my company'), or Enter to type the full URL: ").strip()
     if acct:
         base_url = f"https://{acct}.timehub.7pace.com"
     else:
@@ -494,7 +494,7 @@ Examples:
     if args.search is not None:
         azdo = config.get("azure_devops", {})
         azdo_pat = args.azdo_pat or azdo.get("pat") or os.environ.get("AZDO_PAT")
-        azdo_org = azdo.get("organization") or "Dagrofa"
+        azdo_org = azdo.get("organization") or "myCompany"
         azdo_project = args.project if args.project is not None else azdo.get("project")
         if not azdo_pat:
             _error("Search requires an Azure DevOps PAT. Add 'azure_devops.pat' to config "

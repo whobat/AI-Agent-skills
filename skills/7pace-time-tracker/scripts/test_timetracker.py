@@ -146,7 +146,7 @@ class TestAuthSetup(unittest.TestCase):
     def test_writes_config_from_prompts(self):
         import tempfile
         # reader answers in order: account, org, project(Enter), work item, comment
-        answers = iter(["dagrofa", "Dagrofa", "", "32933", "Work"])
+        answers = iter(["mycompany", "myCompany", "", "32933", "Work"])
         secrets = iter(["TOK7PACE", "ADOPAT"])
         with tempfile.TemporaryDirectory() as d:
             cfgp = Path(d) / "config.json"
@@ -154,8 +154,8 @@ class TestAuthSetup(unittest.TestCase):
                               secret_reader=lambda _p: next(secrets))
             cfg = json.loads(cfgp.read_text(encoding="utf-8"))
         self.assertEqual(cfg["auth"], {"type": "bearer", "token": "TOK7PACE"})
-        self.assertEqual(cfg["base_url"], "https://dagrofa.timehub.7pace.com")
-        self.assertEqual(cfg["azure_devops"]["organization"], "Dagrofa")
+        self.assertEqual(cfg["base_url"], "https://mycompany.timehub.7pace.com")
+        self.assertEqual(cfg["azure_devops"]["organization"], "myCompany")
         self.assertEqual(cfg["azure_devops"]["pat"], "ADOPAT")
         self.assertIsNone(cfg["azure_devops"]["project"])
         self.assertEqual(cfg["defaults"]["work_item_id"], 32933)
@@ -242,7 +242,7 @@ class TestSearchIntegration(unittest.TestCase):
     def setUpClass(cls):
         azdo = _CFG["azure_devops"]
         cls.pat = azdo["pat"]
-        cls.org = azdo.get("organization", "Dagrofa")
+        cls.org = azdo.get("organization", "myCompany")
 
     def test_orgwide_finds_known(self):
         res = tr.azdo_search_work_items("Generel", self.pat, self.org, None)
