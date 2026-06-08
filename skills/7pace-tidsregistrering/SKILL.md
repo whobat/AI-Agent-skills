@@ -1,9 +1,11 @@
 ---
-name: tidsregistrering
-description: Registers/edits/deletes time entries in 7pace Timetracker (Azure DevOps, Dagrofa "IT Infrastruktur") across a range of weekdays. Primary path is the bundled Python API script (fast, no UI); browser UI automation is a fallback. Use when the user wants to log/register work hours ("tidsregistrering", "registrer tid", "log timer", "bogfør timer") on a work item ID over a date range with a per-day hours pattern (e.g. "7:30 man-tor og 7:00 fredag fra april til dags dato på #32933").
+name: 7pace-tidsregistrering
+description: 7pace Timetracker (Azure DevOps) time tracking — registers/edits/deletes worklogs in 7pace across a range of weekdays for the Dagrofa "IT Infrastruktur" org. Primary path is the bundled Python 7pace REST API script (fast, no UI); browser UI automation of 7pace is a fallback. Use when the user wants to log/register work hours in 7pace ("tidsregistrering", "registrer tid i 7pace", "log timer", "bogfør timer", "7pace") on a work item ID over a date range with a per-day hours pattern (e.g. "7:30 man-tor og 7:00 fredag fra april til dags dato på #32933").
 ---
 
-# Tidsregistrering (7pace Timetracker)
+# 7pace Timetracker — tidsregistrering (Dagrofa)
+
+> **This skill targets [7pace Timetracker](https://www.7pace.com/) for Azure DevOps.** All time entries (worklogs) are created in 7pace via its REST API at `https://<org>.timehub.7pace.com`.
 
 Creates/updates/deletes worklogs in 7pace. **Prefer the API script** (`scripts/tidsregistrering.py`) — it uses the 7pace REST API directly and is ~100× cheaper than clicking the UI. Fall back to the browser UI only if the API token is unavailable.
 

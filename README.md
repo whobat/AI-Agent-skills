@@ -15,7 +15,7 @@ AI-Agent-skills/
 ├── install.ps1                # script installer (Windows PowerShell)
 ├── install.sh                 # script installer (macOS/Linux/Git-Bash)
 └── skills/
-    └── tidsregistrering/       # one folder per skill
+    └── 7pace-tidsregistrering/ # one folder per skill (7pace Timetracker)
         ├── SKILL.md            # the skill manifest + instructions
         ├── REFERENCE.md        # detailed reference (optional)
         ├── skill.install.json  # optional: declares the credential-setup command
@@ -29,7 +29,7 @@ AI-Agent-skills/
 
 | Skill | What it does | Extra setup |
 |-------|--------------|-------------|
-| **tidsregistrering** | Create/edit/delete time entries in 7pace Timetracker (Azure DevOps) via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [skill README note](#configuration--secrets)). |
+| **7pace-tidsregistrering** | **7pace Timetracker** (Azure DevOps): create/edit/delete time entries via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [Configuration & secrets](#configuration--secrets)). |
 
 ## Install with `npx` (recommended)
 
@@ -41,7 +41,7 @@ npx github:whobat/AI-Agent-skills
 
 # Non-interactive
 npx github:whobat/AI-Agent-skills --agent claude --skill all
-npx github:whobat/AI-Agent-skills --agent codex  --skill tidsregistrering --auth
+npx github:whobat/AI-Agent-skills --agent codex  --skill 7pace-tidsregistrering --auth
 ```
 
 Flags: `--agent claude|codex|opencode` · `--skill all|<name>` · `--auth` (run a skill's credential setup after install) · `--symlink` · `--list` · `-y/--yes` · `-h`.
@@ -55,13 +55,13 @@ If you've cloned the repo and prefer not to use Node:
 **Windows (PowerShell):**
 ```powershell
 ./install.ps1 -Agent claude -Skill all
-./install.ps1 -Agent codex -Skill tidsregistrering
+./install.ps1 -Agent codex -Skill 7pace-tidsregistrering
 ```
 
 **macOS / Linux / Git-Bash:**
 ```bash
 ./install.sh --agent claude --skill all
-./install.sh --agent codex --skill tidsregistrering
+./install.sh --agent codex --skill 7pace-tidsregistrering
 ```
 
 `-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy.
@@ -80,8 +80,8 @@ A skill = the folder `skills/<name>/`. Copy (or symlink) that folder into the ag
 
 > **Tip — one copy, many agents:** `~/.agents/skills/` is read by Codex *and* OpenCode, and Claude Code reads `~/.claude/skills/`. Symlinking a skill into both covers most setups:
 > ```bash
-> ln -s "$PWD/skills/tidsregistrering" ~/.claude/skills/tidsregistrering
-> ln -s "$PWD/skills/tidsregistrering" ~/.agents/skills/tidsregistrering
+> ln -s "$PWD/skills/7pace-tidsregistrering" ~/.claude/skills/7pace-tidsregistrering
+> ln -s "$PWD/skills/7pace-tidsregistrering" ~/.agents/skills/7pace-tidsregistrering
 > ```
 
 **Examples (manual copy):**
@@ -89,7 +89,7 @@ A skill = the folder `skills/<name>/`. Copy (or symlink) that folder into the ag
 # Claude Code — all skills
 cp -r skills/* ~/.claude/skills/
 # Codex — single skill
-cp -r skills/tidsregistrering ~/.agents/skills/
+cp -r skills/7pace-tidsregistrering ~/.agents/skills/
 ```
 ```powershell
 # Claude Code — all skills (PowerShell)
@@ -100,7 +100,7 @@ Copy-Item skills/* "$HOME/.claude/skills/" -Recurse
 
 There is no single standard for every agent. Two fallbacks that always work:
 1. **SKILL.md as instructions** — paste the `SKILL.md` body into the agent's rules/instructions file (e.g. `AGENTS.md`, a system prompt, or a custom command).
-2. **Script is agent-agnostic** — `skills/tidsregistrering/scripts/tidsregistrering.py` is a plain Python CLI. Any agent (or you) can run it directly; see its `--help`.
+2. **Script is agent-agnostic** — `skills/7pace-tidsregistrering/scripts/tidsregistrering.py` is a plain Python CLI. Any agent (or you) can run it directly; see its `--help`.
 
 ## Configuration & secrets
 
@@ -108,13 +108,13 @@ Skills that need credentials ship a `config.example.json`. **Never commit real t
 
 **Easiest — guided setup (recommended):** the installer's `--auth` runs it for you, or run it directly:
 ```bash
-python skills/tidsregistrering/scripts/tidsregistrering.py --auth
+python skills/7pace-tidsregistrering/scripts/tidsregistrering.py --auth
 ```
-It prompts (tokens hidden) and writes `~/.7pace/config.json` (chmod 600). For `tidsregistrering` that's the 7pace **Bearer token** (worklog CRUD) and an optional Azure DevOps **PAT** (work-item search) — two separate systems, both kept out of git.
+It prompts (tokens hidden) and writes `~/.7pace/config.json` (chmod 600). For `7pace-tidsregistrering` that's the **7pace Bearer token** (worklog CRUD) and an optional Azure DevOps **PAT** (work-item search) — two separate systems, both kept out of git.
 
 **Manual alternative:**
 ```bash
-cp skills/tidsregistrering/config.example.json ~/.7pace/config.json   # then edit with your tokens
+cp skills/7pace-tidsregistrering/config.example.json ~/.7pace/config.json   # then edit with your tokens
 ```
 The script reads `~/.7pace/config.json` by default; override with `--config <path>`.
 
@@ -123,7 +123,7 @@ The script reads `~/.7pace/config.json` by default; override with `--config <pat
 Skills that bundle scripts may include tests.
 
 ```bash
-cd skills/tidsregistrering/scripts
+cd skills/7pace-tidsregistrering/scripts
 python -m unittest test_tidsregistrering -v                 # unit tests, no network
 RUN_INTEGRATION=1 python -m unittest test_tidsregistrering -v   # + live API (needs config.json)
 ```
