@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["sqlserver-perf-triage"],
+    "query": "Our SQL server SQLSRV05 feels slow today. Can you take a look?",
+    "expected_behavior": [
+      "Runs Invoke-SqlPerfTriage.ps1 against SQLSRV05 (server-level, or asks which database matters)",
+      "Triages in order: blocking -> deadlocks -> waits -> top queries, and leads with the 2-4 findings that matter",
+      "States the counter window (sqlserver_start_time) before drawing conclusions from cumulative stats"
+    ]
+  },
+  {
+    "skills": ["sqlserver-perf-triage"],
+    "query": "The app team says their database has deadlocks every night around 02:00.",
+    "expected_behavior": [
+      "Notes that the system_health ring buffer only holds recent history and recommends running during/just after the window",
+      "Pulls the deadlocks section and identifies victims, processes, and objects involved when graphs exist",
+      "Proposes follow-up (Query Store or scheduled capture) rather than guessing from absent data"
+    ]
+  },
+  {
+    "skills": ["sqlserver-perf-triage"],
+    "query": "Should I add the index the missing-index DMV suggests on our ERP database?",
+    "expected_behavior": [
+      "Asks whether an application owns the schema (Dynamics NAV/AX drop out-of-band indexes on synchronization)",
+      "Routes to the application-specific sibling skill when it is a NAV/AX database",
+      "Otherwise consolidates the naive DMV suggestion against existing indexes before recommending creation"
+    ]
+  }
+]

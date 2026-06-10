@@ -36,6 +36,9 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 | **nav2009-permissions-security** | — (knowledge-only) | — | — |
 | **nav2009-troubleshooting** | — (knowledge-only) | — | — |
 | **ai-agent-skills-update** | Node.js 18+ (for the npx path; warn-only) | — | — |
+| **sqlserver-perf-triage** | PowerShell 7+ (auto-installed) | — | Windows integrated auth (or `-SqlCredential`, prompted). `VIEW SERVER STATE` + `VIEW DATABASE STATE`. Read-only. |
+| **ax2012-sql-performance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth (or `-SqlCredential`, prompted). `VIEW SERVER STATE` + `VIEW DATABASE STATE`. Read-only. |
+| **retail-pos-fleet-health** | PowerShell 7+ (auto-installed) | — | Admin credential on the targets, **prompted each run**. WinRM on the targets. Read-only. |
 
 ## Repository layout
 
@@ -71,6 +74,9 @@ AI-Agent-skills/
 | **nav2009-db-maintenance** | **NAV 2009 SQL maintenance** (action side of the perf skill): backup, `DBCC CHECKDB`, rebuild/reorganize NAV-owned indexes, and update statistics — defaulting to a dry run that prints the exact T-SQL. Never creates/drops indexes (NAV owns them). | PowerShell 7+ (auto-installed), SQL maintenance permissions. |
 | **nav2009-permissions-security** | **NAV 2009 security & permissions**: Roles/permission sets, object permissions (incl. indirect), security filters, Windows vs Database logins, NAV↔SQL synchronization and Standard vs Enhanced models, and the license-vs-permission distinction. Knowledge-only. | None. |
 | **nav2009-troubleshooting** | **NAV 2009 triage runbook**: maps a reported symptom (RTC won't connect, Service Tier won't start, login/permission/license errors, posting/locking failures, NAS/Job Queue stopped, deployment/compile errors, crashes) to a likely cause and routes to the right NAV 2009 skill. Knowledge-only. | None. |
+| **sqlserver-perf-triage** | **Generic SQL Server performance triage** (any instance/database): read-only DMV snapshot — top queries, waits, blocking, deadlocks, missing/unused indexes, fragmentation, stale stats, config — as JSON, with a generic interpretation guide. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE`. |
+| **ax2012-sql-performance** | **Dynamics AX 2012 (R3) SQL performance triage**: the same read-only snapshot, interpreted through an AX lens — known bloat tables and their cleanup routines, RCSI/TF4136/MAXDOP posture, AOT-owned indexes, and Retail channel DB / CDX sync health. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE`. |
+| **retail-pos-fleet-health** | **POS / Windows fleet health sweep** over WinRM: stopped auto-start services, local SQL instances with per-DB sizes (flags databases nearing the SQL Express 10 GB limit), low disk, recent error counts — ranked warnings as JSON. Read-only. | PowerShell 7+ (auto-installed), WinRM on the targets, admin credential (prompted). |
 | **ai-agent-skills-update** | **Update skills installed from THIS repo** (and only this repo — other skills are never touched): runs the installer in `--update` mode across all agents, refreshes every installed repo skill to the latest published version, installs nothing new, preserves local `config.json`. Triggers on "update my AI-Agent-skills". | Node.js 18+ for the npx path (warned if missing; clone + `install.ps1`/`install.sh -Update` works without). |
 
 ## Install as a Claude Code plugin (marketplace)
