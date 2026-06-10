@@ -85,6 +85,33 @@ Describe 'Invoke-NavObjects.ps1' {
         }
     }
 
+    Context 'dry run (behavioral — no finsql.exe needed)' {
+        It 'returns the full argument string in the JSON (regression: $Args shadowing)' {
+            $json = & $script:ScriptPath -Command Export -ServerName 'SRV01' -Database 'NAVDB' `
+                -Path (Join-Path ([System.IO.Path]::GetTempPath()) 'objects.txt') `
+                -Filter 'Type=Table;ID=32|50022'
+            $r = $json | ConvertFrom-Json
+            $r.executed | Should -BeFalse
+            $r.arguments | Should -Not -BeNullOrEmpty
+            $r.arguments | Should -Match 'command=exportobjects'
+            $r.arguments | Should -Match 'servername=SRV01'
+            $r.arguments | Should -Match 'database=NAVDB'
+            $r.arguments | Should -Match ([regex]::Escape('filter=Type=Table;ID=32|50022'))
+            $r.arguments | Should -Match 'ntauthentication=yes'
+        }
+
+        It 'redacts the SQL password in the dry-run arguments' {
+            $cred = [pscredential]::new('sa',
+                (ConvertTo-SecureString 'S3cretValue!' -AsPlainText -Force))
+            $json = & $script:ScriptPath -Command Export -ServerName 'SRV01' -Database 'NAVDB' `
+                -Path (Join-Path ([System.IO.Path]::GetTempPath()) 'objects.txt') `
+                -SqlCredential $cred
+            $r = $json | ConvertFrom-Json
+            $r.arguments | Should -Match ([regex]::Escape('password=***'))
+            $r.arguments | Should -Not -Match 'S3cretValue'
+        }
+    }
+
     Context 'security contract' {
         BeforeAll {
             $script:Content = Get-Content $script:ScriptPath -Raw

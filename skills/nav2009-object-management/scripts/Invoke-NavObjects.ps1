@@ -74,9 +74,10 @@ $ErrorActionPreference = 'Stop'
 # Helpers
 # ---------------------------------------------------------------------------
 function Redact-Arguments {
-    param([string]$Args)
+    # NB: parameter must not be named $Args — the automatic variable shadows it (empty result).
+    param([string]$ArgumentString)
     # Replace password=<value> with password=*** so credentials never appear in output.
-    $Args -replace '(?i)password=[^,]+', 'password=***'
+    $ArgumentString -replace '(?i)password=[^,]+', 'password=***'
 }
 
 # ---------------------------------------------------------------------------

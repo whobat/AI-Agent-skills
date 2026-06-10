@@ -1,6 +1,6 @@
 ---
 name: nav2009-object-management
-version: 1.0.0
+version: 1.0.1
 description: Import, export, and compile Microsoft Dynamics NAV 2009 C/AL objects via the Classic development environment CLI (finsql.exe). The bundled script wraps finsql.exe command-line operations to move objects between databases or between a file and a database — supporting both binary .fob files and text-format .txt files — and emits structured JSON so the agent can report results and errors clearly. Use when the user wants to export all codeunits in the 50000 range, import this .fob into NAV, compile all modified objects, deploy objects between two NAV databases, export a specific table or report to .txt, or migrate customisations from a development database to production. A developer license is required for .txt export/import and for compiling; .fob import works with an end-user license. Requires PowerShell 7+ and a NAV 2009 install (finsql.exe) with an appropriate license.
 ---
 
