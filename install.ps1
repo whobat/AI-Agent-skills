@@ -4,7 +4,7 @@
   Install Agent Skills into a coding agent's skills directory.
 .EXAMPLE
   ./install.ps1 -Agent claude -Skill all
-  ./install.ps1 -Agent codex  -Skill tidsregistrering
+  ./install.ps1 -Agent codex  -Skill 7pace-time-tracker
 #>
 param(
   [Parameter(Mandatory = $true)][ValidateSet('claude', 'codex', 'opencode', 'all')][string]$Agent,

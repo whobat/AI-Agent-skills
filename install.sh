@@ -3,7 +3,7 @@
 #
 # Usage:
 #   ./install.sh --agent claude   --skill all
-#   ./install.sh --agent codex    --skill tidsregistrering
+#   ./install.sh --agent codex    --skill 7pace-time-tracker
 #   ./install.sh --agent opencode --skill all --symlink
 set -euo pipefail
 

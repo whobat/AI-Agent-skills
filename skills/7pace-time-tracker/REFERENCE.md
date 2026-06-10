@@ -19,7 +19,7 @@ field positions are stable regardless of which cell you double-click.
 
 ## Reaching the right week
 - From any week, click `‹`/`›` to step weeks. After clicking, **wait ~3s** for "Loading…" to clear, then `zoom` the header+grid (`180,80 → 1540,210`) to read the week label and existing values. Navigation clicks fired during load are lost — re-click if the label didn't change.
-- If the #32933 row is absent (empty week), tick "Show items from previous week" (`1362,116`); the row appears with empty cells.
+- If the work-item row is absent (empty week), tick "Show items from previous week" (`1362,116`); the row appears with empty cells.
 
 ## Filling one cell (the reliable 3-call flow)
 For a weekday cell that is **empty** and **in range** (else skip):
@@ -38,5 +38,5 @@ Notes:
 
 ## Looping
 - Fill all in-range empty weekdays in the current week, then `›` to the next week, wait, re-read, repeat.
-- **Skip**: Sat/Sun; Danish public holidays; any weekday already showing hours (report these as "skipped — already had time").
-- Track progress and report at month boundaries. At the end, list every day registered (date+hours), every skip with reason, and the grand total. Flag ambiguous near-holidays (e.g. the Friday after Kr. Himmelfart, Grundlovsdag June 5) — these are NOT official helligdage so they get filled by default, but the user may want them removed.
+- **Skip**: Sat/Sun; public holidays in the user's locale; any weekday already showing hours (report these as "skipped — already had time").
+- Track progress and report at month boundaries. At the end, list every day registered (date+hours), every skip with reason, and the grand total. Flag ambiguous near-holidays (bridge days adjacent to an official holiday) — these are not official holidays so they get filled by default, but the user may want them removed.

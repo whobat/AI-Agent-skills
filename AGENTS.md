@@ -85,13 +85,14 @@ Layout: `skills/<name>/` (the skills, one folder each) · `bin/cli.js` + `instal
 - **Installer parity is mandatory.** `bin/cli.js`, `install.ps1`, and `install.sh` must behave identically (same agents, flags, copy/secret-strip/version-update/credential-detection logic). A change to one requires the equivalent change to the other two and to their test suites in `tests/installers/`.
 - **A skill is the folder `skills/<name>/`** with a `SKILL.md` whose frontmatter has `name`, `version`, `description`. Owning rules live in [skills/AGENTS.md](skills/AGENTS.md).
 - **Never commit real secrets.** Only `config.example.json` is tracked; `.gitignore` excludes `config.json`. Installers strip `config.json` and `__pycache__/` on copy and preserve an already-installed `config.json` on update.
+- **No company-specific data — ever.** This repo is public and must be usable by anyone. Committed content must not contain: real company or customer names, AD/DNS domains, server/instance/database names, Azure DevOps organization or project names, real work-item IDs, license details, internal policies tied to one employer, or personal usernames/home paths. Use neutral placeholders instead (`<your-org>`, `Acme`, `MyProject`, `SRV01`, `NAVDB`, work item `12345`). Anything tenant-specific belongs in the user's local `config.json` (gitignored) or environment variables; tenant-dependent tests must read those and **skip** when unset. Before committing, grep your changes for names that only make sense inside one company.
 - **Keep README in sync** with reality: the **Available skills** table and per-skill requirements rows must match the actual `skills/` folders and their `skill.install.json`.
 
 ## User Preferences
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
-- Anonymize real company names in committed content (e.g. use `myCompany`, not the real employer).
+- All committed content must be fully anonymized and generalized (see "No company-specific data" above) — placeholders, not the real employer, customers, or infrastructure.
 
 ## Child DOX Index
 

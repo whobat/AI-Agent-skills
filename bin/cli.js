@@ -4,7 +4,7 @@
  *
  *   npx github:whobat/AI-Agent-skills                      # interactive
  *   npx github:whobat/AI-Agent-skills --agent claude --skill all
- *   npx github:whobat/AI-Agent-skills --agent codex --skill tidsregistrering --auth
+ *   npx github:whobat/AI-Agent-skills --agent codex --skill 7pace-time-tracker --auth
  *
  * Flags:
  *   --agent <claude|codex|opencode|all>   target agent(s) (prompted if omitted)

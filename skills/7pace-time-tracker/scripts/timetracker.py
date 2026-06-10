@@ -106,11 +106,11 @@ def create_default_config(path: Path):
         "api_version": API_VERSION,
         "azure_devops": {
             "pat": "PASTE_AZURE_DEVOPS_PAT_HERE",
-            "organization": "myCompany",
+            "organization": "PASTE_AZDO_ORGANIZATION_HERE",
             "project": None
         },
         "defaults": {
-            "work_item_id": 32933,
+            "work_item_id": None,
             "comment": "Work"
         }
     }
@@ -410,15 +410,15 @@ def main():
 Examples:
   # Single day
   python timetracker.py --date 2026-04-09 --hours 4 \\
-      --work-item 32933 --comment "Work" --yes --json
+      --work-item 12345 --comment "Work" --yes --json
 
   # Date range with a per-weekday pattern
   python timetracker.py --from 2026-04-01 --to today \\
       --hours "7.5 mon-thu and 7.0 fri" \\
-      --work-item 32933 --comment "Work" --yes --json
+      --work-item 12345 --comment "Work" --yes --json
 
   # Search a work item by name
-  python timetracker.py --search "Nordisk Film" --json
+  python timetracker.py --search "Website Redesign" --json
 
   # Update / delete
   python timetracker.py --update WORKLOG_ID --hours 8 --yes --json
@@ -494,7 +494,10 @@ Examples:
     if args.search is not None:
         azdo = config.get("azure_devops", {})
         azdo_pat = args.azdo_pat or azdo.get("pat") or os.environ.get("AZDO_PAT")
-        azdo_org = azdo.get("organization") or "myCompany"
+        azdo_org = azdo.get("organization")
+        if not azdo_org or "PASTE" in azdo_org:
+            _error("Search requires 'azure_devops.organization' in config (run --auth to set it).",
+                   args.json)
         azdo_project = args.project if args.project is not None else azdo.get("project")
         if not azdo_pat:
             _error("Search requires an Azure DevOps PAT. Add 'azure_devops.pat' to config "

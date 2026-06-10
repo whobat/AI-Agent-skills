@@ -23,7 +23,8 @@ import timetracker as tr
 
 CONFIG_PATH = Path(__file__).with_name("config.json")
 TEST_DATE = datetime.date(2031, 12, 31)
-TEST_WORK_ITEM = 32933
+# Integration tests need a work item that exists in YOUR tenant: set the
+# SEVENPACE_TEST_WORK_ITEM env var, or defaults.work_item_id in config.json.
 MARKER = "UNITTEST - safe to delete"
 
 
@@ -92,10 +93,10 @@ class TestGetWeekdays(unittest.TestCase):
 
 class TestBuildPayload(unittest.TestCase):
     def test_basic(self):
-        p = tr._build_worklog_payload(datetime.date(2026, 6, 8), 7.5, 32933, "work")
+        p = tr._build_worklog_payload(datetime.date(2026, 6, 8), 7.5, 12345, "work")
         self.assertEqual(p["timeStamp"], "2026-06-08T08:00:00")
         self.assertEqual(p["length"], 27000)
-        self.assertEqual(p["workItemId"], 32933)
+        self.assertEqual(p["workItemId"], 12345)
         self.assertEqual(p["comment"], "work")
         self.assertNotIn("billableLength", p)
 
@@ -146,7 +147,7 @@ class TestAuthSetup(unittest.TestCase):
     def test_writes_config_from_prompts(self):
         import tempfile
         # reader answers in order: account, org, project(Enter), work item, comment
-        answers = iter(["mycompany", "myCompany", "", "32933", "Work"])
+        answers = iter(["acme", "Acme", "", "12345", "Work"])
         secrets = iter(["TOK7PACE", "ADOPAT"])
         with tempfile.TemporaryDirectory() as d:
             cfgp = Path(d) / "config.json"
@@ -154,11 +155,11 @@ class TestAuthSetup(unittest.TestCase):
                               secret_reader=lambda _p: next(secrets))
             cfg = json.loads(cfgp.read_text(encoding="utf-8"))
         self.assertEqual(cfg["auth"], {"type": "bearer", "token": "TOK7PACE"})
-        self.assertEqual(cfg["base_url"], "https://mycompany.timehub.7pace.com")
-        self.assertEqual(cfg["azure_devops"]["organization"], "myCompany")
+        self.assertEqual(cfg["base_url"], "https://acme.timehub.7pace.com")
+        self.assertEqual(cfg["azure_devops"]["organization"], "Acme")
         self.assertEqual(cfg["azure_devops"]["pat"], "ADOPAT")
         self.assertIsNone(cfg["azure_devops"]["project"])
-        self.assertEqual(cfg["defaults"]["work_item_id"], 32933)
+        self.assertEqual(cfg["defaults"]["work_item_id"], 12345)
         self.assertEqual(cfg["defaults"]["comment"], "Work")
 
     def test_full_url_and_skip_pat(self):
@@ -198,8 +199,21 @@ def _has_azdo_pat(cfg):
 _RUN = os.environ.get("RUN_INTEGRATION") == "1"
 _CFG = _config()
 
+# Tenant-specific test inputs come from env vars (or config) — never hardcoded:
+#   SEVENPACE_TEST_WORK_ITEM  work item to create test worklogs on (or defaults.work_item_id)
+#   AZDO_TEST_SEARCH_QUERY    a query that matches at least one work item in your org
+#   AZDO_TEST_KNOWN_ID        a work item id expected among those matches
+#   AZDO_TEST_PROJECT         an ADO project containing the matches (for scope tests)
+TEST_WORK_ITEM = int(os.environ.get("SEVENPACE_TEST_WORK_ITEM")
+                     or (_CFG.get("defaults") or {}).get("work_item_id") or 0)
+_SEARCH_QUERY = os.environ.get("AZDO_TEST_SEARCH_QUERY")
+_SEARCH_KNOWN_ID = int(os.environ.get("AZDO_TEST_KNOWN_ID") or 0)
+_SEARCH_PROJECT = os.environ.get("AZDO_TEST_PROJECT")
 
-@unittest.skipUnless(_RUN and _has_7pace_token(_CFG), "needs RUN_INTEGRATION=1 and a valid 7pace token")
+
+@unittest.skipUnless(_RUN and _has_7pace_token(_CFG) and TEST_WORK_ITEM,
+                     "needs RUN_INTEGRATION=1, a valid 7pace token, and SEVENPACE_TEST_WORK_ITEM "
+                     "(or defaults.work_item_id in config.json)")
 class TestWorklogIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -236,31 +250,28 @@ class TestWorklogIntegration(unittest.TestCase):
         self.assertEqual(len(self.client.get_worklogs(TEST_DATE, TEST_DATE)), 0)
 
 
-@unittest.skipUnless(_RUN and _has_azdo_pat(_CFG), "needs RUN_INTEGRATION=1 and a valid ADO PAT")
+@unittest.skipUnless(_RUN and _has_azdo_pat(_CFG) and (_CFG.get("azure_devops") or {}).get("organization"),
+                     "needs RUN_INTEGRATION=1, a valid ADO PAT, and azure_devops.organization in config.json")
 class TestSearchIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         azdo = _CFG["azure_devops"]
         cls.pat = azdo["pat"]
-        cls.org = azdo.get("organization", "myCompany")
+        cls.org = azdo["organization"]
 
+    @unittest.skipUnless(_SEARCH_QUERY and _SEARCH_KNOWN_ID,
+                         "needs AZDO_TEST_SEARCH_QUERY and AZDO_TEST_KNOWN_ID")
     def test_orgwide_finds_known(self):
-        res = tr.azdo_search_work_items("Generel", self.pat, self.org, None)
-        self.assertIn(32933, [m["id"] for m in res])
+        res = tr.azdo_search_work_items(_SEARCH_QUERY, self.pat, self.org, None)
+        self.assertIn(_SEARCH_KNOWN_ID, [m["id"] for m in res])
         self.assertTrue(all({"id", "title", "project", "state"} <= set(m) for m in res))
 
-    def test_orgwide_finds_cross_project(self):
-        res = tr.azdo_search_work_items("Ikke-arbejdstid", self.pat, self.org, None)
-        self.assertIn(840, [m["id"] for m in res])
-
+    @unittest.skipUnless(_SEARCH_QUERY and _SEARCH_PROJECT,
+                         "needs AZDO_TEST_SEARCH_QUERY and AZDO_TEST_PROJECT")
     def test_project_scope_narrows(self):
-        res = tr.azdo_search_work_items("Generel", self.pat, self.org, "IT Infrastruktur")
+        res = tr.azdo_search_work_items(_SEARCH_QUERY, self.pat, self.org, _SEARCH_PROJECT)
         self.assertTrue(res)
-        self.assertTrue(all(m["project"] == "IT Infrastruktur" for m in res))
-
-    def test_project_scope_excludes_other_project(self):
-        res = tr.azdo_search_work_items("Ikke-arbejdstid", self.pat, self.org, "IT Infrastruktur")
-        self.assertEqual(res, [])
+        self.assertTrue(all(m["project"] == _SEARCH_PROJECT for m in res))
 
     def test_zero_matches(self):
         self.assertEqual(tr.azdo_search_work_items("zzz-nonexistent-xyzqwerty", self.pat, self.org, None), [])
