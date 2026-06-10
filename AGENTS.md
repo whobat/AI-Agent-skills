@@ -82,6 +82,12 @@ Layout: `skills/<name>/` (the skills, one folder each) · `bin/cli.js` + `instal
 
 ## Project Contract
 
+- **`main` is protected — no direct pushes.** A GitHub ruleset requires every change to
+  go through a pull request, and all three CI status checks (spec validation, Windows,
+  Linux) must pass before merge. Workflow: create a branch, commit, push the branch,
+  open a PR (`gh pr create`), wait for CI (`gh pr checks --watch`), then merge
+  (`gh pr merge --squash --delete-branch`). There is no bypass — run the test suites
+  locally before pushing to avoid red PRs.
 - **Installer parity is mandatory.** `bin/cli.js`, `install.ps1`, and `install.sh` must behave identically (same agents, flags, copy/secret-strip/version-update/credential-detection logic). A change to one requires the equivalent change to the other two and to their test suites in `tests/installers/`.
 - **A skill is the folder `skills/<name>/`** with a `SKILL.md` whose frontmatter follows the [Agent Skills specification](https://agentskills.io/specification) **strictly**: only spec-defined fields (`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`); the version lives under `metadata.version`. No custom top-level fields — `node tests/validate-skills.mjs` (also `npm run validate` / CI) enforces this and must pass before every commit that touches a skill. Owning rules live in [skills/AGENTS.md](skills/AGENTS.md).
 - **Never commit real secrets.** Only `config.example.json` is tracked; `.gitignore` excludes `config.json`. Installers strip `config.json` and `__pycache__/` on copy and preserve an already-installed `config.json` on update.
