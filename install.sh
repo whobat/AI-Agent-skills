@@ -114,14 +114,17 @@ ensure_python() {
   return 1
 }
 
-# Echo the 'version:' value from a skill's SKILL.md frontmatter (empty if absent).
+# Echo the skill version from SKILL.md frontmatter (empty if absent). Per the Agent
+# Skills spec the version lives under `metadata: version:` (indented); legacy top-level
+# `version:` is still accepted.
 skill_version() {
   local md="$1/SKILL.md"
   [ -f "$md" ] || return 0
   awk '
     /^---[[:space:]]*$/ { if (inf) exit; inf=1; next }
     inf && /^[[:space:]]*version:[[:space:]]*/ {
-      sub(/^[[:space:]]*version:[[:space:]]*/, ""); gsub(/[[:space:]]+$/, ""); print; exit
+      sub(/^[[:space:]]*version:[[:space:]]*/, ""); gsub(/[[:space:]]+$/, "");
+      gsub(/["\047]/, ""); print; exit
     }' "$md"
 }
 

@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-service-tier-admin"],
+    "query": "Which NAV service tiers run on APPSRV01 and what databases do they point at?",
+    "expected_behavior": [
+      "Runs the inventory script with -ComputerName APPSRV01 (read-only)",
+      "Reports per instance: status, service account, database server/name, and ports from CustomSettings.config",
+      "Flags any instance where CustomSettings.config could not be located/parsed instead of omitting it silently"
+    ]
+  },
+  {
+    "skills": ["nav2009-service-tier-admin"],
+    "query": "Is the Job Queue NAS configured and running on this server?",
+    "expected_behavior": [
+      "Identifies NAS instances and their startup codeunit/method/argument from the inventory JSON",
+      "Distinguishes 'service running' from 'NAS startup parameters configured for Job Queue'",
+      "States clearly when no NAS instance exists rather than guessing"
+    ]
+  },
+  {
+    "skills": ["nav2009-service-tier-admin"],
+    "query": "Restart the NAV service tier - users report stale data.",
+    "expected_behavior": [
+      "Treats restart as opt-in (-Restart -Instance) and warns it disconnects all active RTC clients",
+      "Confirms the specific instance before acting when several exist",
+      "Verifies the service came back up and reports the result"
+    ]
+  }
+]

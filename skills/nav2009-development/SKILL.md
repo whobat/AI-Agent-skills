@@ -1,7 +1,9 @@
 ---
 name: nav2009-development
-version: 1.0.0
 description: Develop, review, and architect C/AL code and objects for Microsoft Dynamics NAV 2009 (Navision) — Classic client and RoleTailored Client (RTC). Covers C/AL coding patterns and performance idioms (FINDSET/FINDFIRST/ISEMPTY, SETCURRENTKEY, locking, COMMIT discipline), key/SIFT design, code-review checklist, customization architecture (hooks, setup tables, number series), reports (Classic sections and RDLC), integrations (XMLports, Dataports, NAS, web services, MSMQ/COM), and upgrade-friendly patterns toward Business Central. Use for any NAV 2009 / Navision / C/AL task — writing or reviewing code, designing a customization, building a report or integration, or preparing for a BC migration.
+license: MIT
+metadata:
+  version: "1.0.1"
 ---
 
 # NAV 2009 Development

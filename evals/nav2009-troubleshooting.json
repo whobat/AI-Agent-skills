@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-troubleshooting"],
+    "query": "The RoleTailored Client says 'The server is not responding' for all users since this morning.",
+    "expected_behavior": [
+      "Maps the symptom to the Service Tier and routes to nav2009-service-tier-admin for inventory/status",
+      "Checks the obvious chain first: NST service state, port reachability, database availability",
+      "Does not start performance tuning or code review for an availability symptom"
+    ]
+  },
+  {
+    "skills": ["nav2009-troubleshooting"],
+    "query": "Posting a purchase order fails with a deadlock error in NAV.",
+    "expected_behavior": [
+      "Classifies it as a locking symptom and routes to nav2009-sql-performance (deadlocks/blocking sections)",
+      "Mentions the C/AL side (lock ordering, transaction length) via nav2009-development for the fix",
+      "Asks whether it is reproducible/concurrent-load-dependent before proposing changes"
+    ]
+  },
+  {
+    "skills": ["nav2009-troubleshooting"],
+    "query": "After importing objects last night, users get compile errors opening the item card.",
+    "expected_behavior": [
+      "Maps the symptom to a deployment issue and routes to nav2009-object-management (compile with sync)",
+      "Suggests compiling the affected objects and checking naverrorlog output",
+      "Considers schema synchronization as the likely cause after table changes"
+    ]
+  }
+]

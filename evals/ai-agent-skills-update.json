@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["ai-agent-skills-update"],
+    "query": "Update my AI-Agent-skills to the latest versions.",
+    "expected_behavior": [
+      "Runs npx -y github:whobat/AI-Agent-skills --update --agent all --yes",
+      "Reports per agent which skills were updated (old -> new) and which were already current",
+      "Mentions that updated skills take effect in the next session"
+    ]
+  },
+  {
+    "skills": ["ai-agent-skills-update"],
+    "query": "Are my skills up to date?",
+    "expected_behavior": [
+      "Runs the update check (or --list --agent comparison) rather than guessing",
+      "Only reports on skills originating from the AI-Agent-skills repo - other skills are out of scope",
+      "Offers to apply available updates rather than applying silently if the user only asked to check"
+    ]
+  },
+  {
+    "skills": ["ai-agent-skills-update"],
+    "query": "I don't have Node on this machine - can I still update the skills?",
+    "expected_behavior": [
+      "Offers the no-Node fallback: git pull in a local clone, then install.ps1 -Agent all -Update -Yes (or install.sh --agent all --update --yes)",
+      "Reminds that the comparison is against the local clone, so pull first",
+      "Does not attempt to install Node without asking"
+    ]
+  }
+]

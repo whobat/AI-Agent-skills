@@ -16,7 +16,10 @@ BeforeAll {
         New-Item -ItemType Directory -Force $repo, $home_ | Out-Null
         Copy-Item (Join-Path $script:RepoRoot 'install.ps1') $repo
 
-        function fm($name, $version) { "---`nname: $name`nversion: $version`ndescription: test fixture`n---`n# $name`n" }
+        # Spec-compliant frontmatter (version under metadata:, per agentskills.io).
+        # Pre-installed fixtures below use the legacy top-level version: inline to
+        # prove the legacy -> spec update path keeps working.
+        function fm($name, $version) { "---`nname: $name`ndescription: test fixture`nlicense: MIT`nmetadata:`n  version: `"$version`"`n---`n# $name`n" }
 
         # alpha-skill: ships a fake secret + cache that must never be installed
         New-Item -ItemType Directory -Force (Join-Path $skills 'alpha-skill\scripts\__pycache__') | Out-Null
@@ -125,7 +128,7 @@ Describe 'install.ps1' {
         Set-Content (Join-Path $pre 'config.json') '{"keep":"me"}' -NoNewline
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
         $r.Out | Should -Match 'alpha-skill: 0\.9\.0 -> 1\.0\.0'
-        Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: 1\.0\.0'
+        Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: "1\.0\.0"'
         Get-Content (Join-Path $pre 'config.json') -Raw | Should -Be '{"keep":"me"}'
     }
 
@@ -138,7 +141,7 @@ Describe 'install.ps1' {
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Update', '-Yes')
         $r.Code | Should -Be 0
         $r.Out | Should -Match 'alpha-skill: 0\.9\.0 -> 1\.0\.0'
-        Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: 1\.0\.0'
+        Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: "1\.0\.0"'
         Get-Content (Join-Path $pre 'config.json') -Raw | Should -Be '{"keep":"me"}'
         Join-Path $fx.AgentDir 'beta-skill' | Should -Not -Exist
         $r2 = Invoke-Installer $fx @('-Agent', 'claude', '-Update', '-Yes')

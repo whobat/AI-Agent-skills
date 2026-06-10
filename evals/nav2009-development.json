@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-development"],
+    "query": "Review this C/AL loop: it does FIND('-') on G/L Entry with a SETFILTER on a custom field, then MODIFYs each record.",
+    "expected_behavior": [
+      "Flags FIND('-') and recommends FINDSET(TRUE) for a modify-loop",
+      "Flags the filter on a field without a supporting key and recommends SETCURRENTKEY matching the filter (or adding a key)",
+      "Checks transaction discipline: no COMMIT inside the loop, LOCKTABLE/lock-order considerations"
+    ]
+  },
+  {
+    "skills": ["nav2009-development"],
+    "query": "I need to add a custom approval step to sales posting in NAV 2009. How should I structure the customization?",
+    "expected_behavior": [
+      "Recommends the hook pattern: logic in a new codeunit in the 50000+ range, one tagged call-out line in Codeunit 80",
+      "Requires version tags on every standard-object change (Version List + inline BEGIN/END markers)",
+      "Mentions BC-upgrade posture: hooks map to event subscribers later, inline logic does not"
+    ]
+  },
+  {
+    "skills": ["nav2009-development"],
+    "query": "My RDLC report in the RoleTailored Client is slow and the header fields show wrong values on page 2.",
+    "expected_behavior": [
+      "Recommends keeping the dataset flat/minimal and aggregating via CALCSUMS/SIFT instead of layout-side work",
+      "Identifies the GetData/SetData pattern as the fix for document header values in NAV 2009 RDLC",
+      "Checks that layout grouping matches the DataItem sort order"
+    ]
+  }
+]

@@ -89,14 +89,15 @@ function Resolve-Python {
   return $py
 }
 
-# Read 'version:' from a skill's SKILL.md frontmatter. $null if absent.
+# Read the skill version from SKILL.md frontmatter. Per the Agent Skills spec the version
+# lives under `metadata: version:` (indented); legacy top-level `version:` still accepted.
 function Get-SkillVersion($skillDir) {
   $md = Join-Path $skillDir 'SKILL.md'
   if (-not (Test-Path $md)) { return $null }
   $inFront = $false
   foreach ($line in Get-Content $md) {
     if ($line -match '^---\s*$') { if ($inFront) { break } else { $inFront = $true; continue } }
-    if ($inFront -and $line -match '^\s*version:\s*(.+?)\s*$') { return $Matches[1].Trim() }
+    if ($inFront -and $line -match '^\s*version:\s*(.+?)\s*$') { return $Matches[1].Trim().Trim('"', "'") }
   }
   return $null
 }

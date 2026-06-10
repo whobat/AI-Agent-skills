@@ -16,7 +16,11 @@ check()        { if eval "$2"; then ok "$1"; else fail "$1"; fi; }
 out_contains() { if grep -q -- "$2" "$OUT"; then ok "$1"; else fail "$1 (output missing: $2)"; fi; }
 out_lacks()    { if grep -q -- "$2" "$OUT"; then fail "$1 (output contains: $2)"; else ok "$1"; fi; }
 
-frontmatter() { printf -- '---\nname: %s\nversion: %s\ndescription: test fixture\n---\n# %s\n' "$1" "$2" "$1"; }
+# Spec-compliant frontmatter (version under metadata:, per agentskills.io).
+frontmatter() { printf -- '---\nname: %s\ndescription: test fixture\nlicense: MIT\nmetadata:\n  version: "%s"\n---\n# %s\n' "$1" "$2" "$1"; }
+# Legacy frontmatter (top-level version:) — used for PRE-INSTALLED fixtures to prove
+# the legacy -> spec update path keeps working.
+legacy_frontmatter() { printf -- '---\nname: %s\nversion: %s\ndescription: test fixture\n---\n# %s\n' "$1" "$2" "$1"; }
 
 # Build a temp repo + fake home. Sets: TMP, REPO, FAKE_HOME, AGENT_DIR, OUT.
 new_fixture() {
@@ -80,7 +84,7 @@ out_contains "shows (new, version)" "(new, 2.0.0)"
 echo "- reinstalling over an older version shows the transition"
 new_fixture
 mkdir -p "$AGENT_DIR/beta-skill"
-frontmatter beta-skill 1.5.0 > "$AGENT_DIR/beta-skill/SKILL.md"
+legacy_frontmatter beta-skill 1.5.0 > "$AGENT_DIR/beta-skill/SKILL.md"
 run_installer --agent claude --skill beta-skill --yes
 out_contains "shows transition" "(1.5.0 -> 2.0.0)"
 
@@ -102,12 +106,12 @@ done
 echo "- --update refreshes installed skills only, preserving config"
 new_fixture
 mkdir -p "$AGENT_DIR/alpha-skill"
-frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
+legacy_frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
 printf '{"keep":"me"}' > "$AGENT_DIR/alpha-skill/config.json"
 run_installer --agent claude --update --yes
 check "exit code 0" '[ "$RC" -eq 0 ]'
 out_contains "update applied" "alpha-skill: 0.9.0 -> 1.0.0"
-check "SKILL.md updated" 'grep -q "version: 1.0.0" "$AGENT_DIR/alpha-skill/SKILL.md"'
+check "SKILL.md updated" "grep -qF 'version: \"1.0.0\"' \"\$AGENT_DIR/alpha-skill/SKILL.md\""
 check "config preserved" '[ "$(cat "$AGENT_DIR/alpha-skill/config.json")" = "{\"keep\":\"me\"}" ]'
 check "no new skills installed" '[ ! -d "$AGENT_DIR/beta-skill" ]'
 run_installer --agent claude --update --yes
@@ -131,11 +135,11 @@ check "missing agent exits non-zero" '[ "$RC" -ne 0 ]'
 echo "- updates an outdated installed skill, preserving its config.json"
 new_fixture
 mkdir -p "$AGENT_DIR/alpha-skill"
-frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
+legacy_frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
 printf '{"keep":"me"}' > "$AGENT_DIR/alpha-skill/config.json"
 run_installer --agent claude --skill beta-skill --yes
 out_contains "update offered/applied" "alpha-skill: 0.9.0 -> 1.0.0"
-check "SKILL.md updated to 1.0.0" 'grep -q "version: 1.0.0" "$AGENT_DIR/alpha-skill/SKILL.md"'
+check "SKILL.md updated to 1.0.0" "grep -qF 'version: \"1.0.0\"' \"\$AGENT_DIR/alpha-skill/SKILL.md\""
 check "config.json preserved" '[ "$(cat "$AGENT_DIR/alpha-skill/config.json")" = "{\"keep\":\"me\"}" ]'
 
 if HOME="$FAKE_HOME" bash -c 'command -v python || command -v python3 || command -v py' >/dev/null 2>&1; then

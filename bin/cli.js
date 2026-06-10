@@ -264,14 +264,19 @@ async function maybeRunAuth(installedDir, opts, py) {
   spawnSync(parts[0], parts.slice(1), { cwd: installedDir, stdio: 'inherit' });
 }
 
-// Read 'version:' from a skill's SKILL.md frontmatter. null if absent.
+// Read the skill version from SKILL.md frontmatter. Per the Agent Skills spec the
+// version lives under `metadata: version:` (indented); the legacy top-level `version:`
+// is still accepted so previously installed copies keep getting update offers.
 function skillVersion(dir) {
   const md = path.join(dir, 'SKILL.md');
   if (!fs.existsSync(md)) return null;
   let inFront = false;
   for (const line of fs.readFileSync(md, 'utf8').split(/\r?\n/)) {
     if (/^---\s*$/.test(line)) { if (inFront) break; inFront = true; continue; }
-    if (inFront) { const m = line.match(/^\s*version:\s*(.+?)\s*$/); if (m) return m[1].trim(); }
+    if (inFront) {
+      const m = line.match(/^\s*version:\s*(.+?)\s*$/);
+      if (m) return m[1].trim().replace(/^["']|["']$/g, '');
+    }
   }
   return null;
 }

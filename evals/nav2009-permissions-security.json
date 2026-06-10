@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-permissions-security"],
+    "query": "A user gets 'You do not have permission to read the Sales Header table' in NAV 2009 but their role includes the sales pages.",
+    "expected_behavior": [
+      "Distinguishes direct vs indirect table permissions and checks whether the role grants only indirect access",
+      "Considers security filters and the Standard vs Enhanced security model",
+      "Separates NAV permission errors from SQL login/sync problems before proposing a fix"
+    ]
+  },
+  {
+    "skills": ["nav2009-permissions-security"],
+    "query": "Should we use Windows logins or Database logins for our NAV 2009 users?",
+    "expected_behavior": [
+      "Explains both models and the typical AD-domain recommendation (Windows logins)",
+      "Mentions the NAV-to-SQL synchronization step and when it must be run",
+      "Notes implications for the RoleTailored Client vs Classic client"
+    ]
+  },
+  {
+    "skills": ["nav2009-permissions-security"],
+    "query": "The customer bought fewer license granules than the modules we customized - users hit license errors.",
+    "expected_behavior": [
+      "Distinguishes license (granule) restrictions from permission-set restrictions",
+      "Identifies that object-range and feature access is license-bound and cannot be fixed with roles",
+      "Recommends checking the license file contents against the objects in use"
+    ]
+  }
+]

@@ -1,7 +1,10 @@
 ---
 name: 7pace-time-tracker
-version: 1.0.2
 description: 7pace Time Tracker (Azure DevOps) — create/edit/delete worklogs in 7pace on a SINGLE day or across a range of weekdays. Primary path is the bundled Python 7pace REST API script (fast, no UI); browser UI automation of 7pace is a fallback. Use when the user wants to log/register/track work hours in 7pace on a work item (by numeric ID or by name) — e.g. "register 4 hours on #12345 on 9 April 2026", "log 7.5h today on the Website Redesign project", or "7:30 Mon–Thu and 7:00 Fri from April to today".
+license: MIT
+compatibility: Requires Python 3.8+ and network access to the 7pace Timetracker / Azure DevOps REST APIs
+metadata:
+  version: "1.0.3"
 ---
 
 # 7pace Time Tracker

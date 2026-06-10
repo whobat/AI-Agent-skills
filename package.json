@@ -5,8 +5,10 @@
   "bin": {
     "ai-agent-skills": "bin/cli.js"
   },
+  "license": "MIT",
   "scripts": {
-    "test": "node --test tests/installers/cli.test.mjs"
+    "validate": "node tests/validate-skills.mjs",
+    "test": "node tests/validate-skills.mjs && node --test tests/installers/cli.test.mjs"
   },
   "files": [
     "bin",

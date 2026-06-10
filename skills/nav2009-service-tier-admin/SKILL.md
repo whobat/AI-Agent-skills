@@ -1,7 +1,10 @@
 ---
 name: nav2009-service-tier-admin
-version: 1.0.0
-description: Inventory and administer Microsoft Dynamics NAV 2009 Service Tiers (NST / NAV Server) and NAS/Job Queue on Windows. The bundled script enumerates every MicrosoftDynamicsNavServer* Windows service, reports its status, start mode, service account, and executable path, then locates and parses CustomSettings.config to surface the database target, client/SOAP/management ports, credential type, and NAS startup codeunit/method/argument. Output is structured JSON; the agent writes the narrative. Use when the user says "list the NAV service tiers on this server", "what database is this NAV instance pointing at", "is the Job Queue NAS configured", "restart the NAV service tier", "which port is the RTC client using", "what service account runs the NAV server", or wants a quick health check of all running NST instances. Inventory is read-only; restarting a service is an explicit opt-in action via -Restart that requires -Instance and will disconnect all active RTC clients. Requires PowerShell 7+; reads the local machine by default; supports remote inventory via -ComputerName (requires CIM/WinRM access and admin rights on the target).
+description: Inventory and administer Microsoft Dynamics NAV 2009 Service Tiers (NST / NAV Server) and NAS/Job Queue on Windows. The bundled script enumerates every MicrosoftDynamicsNavServer* Windows service (status, start mode, service account, executable path) and parses CustomSettings.config to surface the database target, client/SOAP/management ports, credential type, and NAS startup codeunit. Output is structured JSON; the agent writes the narrative. Use when the user says "list the NAV service tiers on this server", "what database is this NAV instance pointing at", "is the Job Queue NAS configured", "restart the NAV service tier", "which port is the RTC client using", or wants a health check of all NST instances. Inventory is read-only; restart is explicit opt-in (-Restart with -Instance) and disconnects active RTC clients. Local machine by default; remote inventory via -ComputerName (CIM/WinRM + admin).
+license: MIT
+compatibility: Requires PowerShell 7+; local admin on the NST host, or CIM/WinRM admin access for remote inventory
+metadata:
+  version: "1.0.1"
 ---
 
 # NAV 2009 Service Tier Admin

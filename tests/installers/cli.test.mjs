@@ -13,7 +13,14 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
+// Spec-compliant frontmatter (version under metadata:, per agentskills.io).
 function frontmatter(name, version) {
+  return `---\nname: ${name}\ndescription: test fixture\nlicense: MIT\nmetadata:\n  version: "${version}"\n---\n# ${name}\n`;
+}
+
+// Legacy frontmatter (top-level version:) — what older installed copies look like.
+// Used for PRE-INSTALLED fixtures to prove the legacy -> spec update path works.
+function legacyFrontmatter(name, version) {
   return `---\nname: ${name}\nversion: ${version}\ndescription: test fixture\n---\n# ${name}\n`;
 }
 
@@ -88,8 +95,8 @@ test('--list prints the available skills with repo versions', () => {
 
 test('--list --agent shows installed vs latest per skill', () => {
   const fx = mkFixture();
-  write(agentDir(fx), 'alpha-skill/SKILL.md', frontmatter('alpha-skill', '0.9.0'));
-  write(agentDir(fx), 'beta-skill/SKILL.md', frontmatter('beta-skill', '2.0.0'));
+  write(agentDir(fx), 'alpha-skill/SKILL.md', legacyFrontmatter('alpha-skill', '0.9.0'));
+  write(agentDir(fx), 'beta-skill/SKILL.md', legacyFrontmatter('beta-skill', '2.0.0'));
   const r = run(fx, ['--list', '--agent', 'claude']);
   assert.match(r.stdout, /alpha-skill\s+\[installed 0\.9\.0 -> latest 1\.0\.0\]/);
   assert.match(r.stdout, /beta-skill\s+\[installed 2\.0\.0, up to date\]/);
@@ -107,7 +114,7 @@ test('installs a single skill into the agent dir, showing (new, version)', () =>
 
 test('reinstalling over an older version shows the transition on the install line', () => {
   const fx = mkFixture();
-  write(agentDir(fx), 'beta-skill/SKILL.md', frontmatter('beta-skill', '1.5.0'));
+  write(agentDir(fx), 'beta-skill/SKILL.md', legacyFrontmatter('beta-skill', '1.5.0'));
   const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
   assert.match(r.stdout, /copied {2}beta-skill -> .+ \(1\.5\.0 -> 2\.0\.0\)/);
 });
@@ -138,13 +145,13 @@ test('fails on unknown skill and unknown agent', () => {
 test('updates an outdated installed skill, preserving its config.json', () => {
   const fx = mkFixture();
   // Pre-install alpha-skill v0.9.0 with a user config inside the skill dir
-  write(agentDir(fx), 'alpha-skill/SKILL.md', frontmatter('alpha-skill', '0.9.0'));
+  write(agentDir(fx), 'alpha-skill/SKILL.md', legacyFrontmatter('alpha-skill', '0.9.0'));
   write(agentDir(fx), 'alpha-skill/config.json', '{"keep":"me"}');
   const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /alpha-skill: 0\.9\.0 -> 1\.0\.0/);
   const installedMd = fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'SKILL.md'), 'utf8');
-  assert.match(installedMd, /version: 1\.0\.0/);
+  assert.match(installedMd, /version: "1\.0\.0"/);
   assert.equal(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'config.json'), 'utf8'), '{"keep":"me"}');
 });
 
@@ -232,12 +239,12 @@ test('warnOnly requirement present via detectPaths: reports OK, no warning', () 
 
 test('--update refreshes installed skills only, preserving config; second run is up to date', () => {
   const fx = mkFixture();
-  write(agentDir(fx), 'alpha-skill/SKILL.md', frontmatter('alpha-skill', '0.9.0'));
+  write(agentDir(fx), 'alpha-skill/SKILL.md', legacyFrontmatter('alpha-skill', '0.9.0'));
   write(agentDir(fx), 'alpha-skill/config.json', '{"keep":"me"}');
   const r = run(fx, ['--update', '--agent', 'claude', '--yes']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /alpha-skill: 0\.9\.0 -> 1\.0\.0/);
-  assert.match(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'SKILL.md'), 'utf8'), /version: 1\.0\.0/);
+  assert.match(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'SKILL.md'), 'utf8'), /version: "1\.0\.0"/);
   assert.equal(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'config.json'), 'utf8'), '{"keep":"me"}');
   assert.ok(!fs.existsSync(path.join(agentDir(fx), 'beta-skill')), 'must not install new skills');
   const r2 = run(fx, ['--update', '--agent', 'claude', '--yes']);

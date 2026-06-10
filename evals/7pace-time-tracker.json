@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["7pace-time-tracker"],
+    "query": "Register 4 hours on work item 12345 for yesterday with comment 'Work'.",
+    "expected_behavior": [
+      "Runs timetracker.py with --date yesterday --hours 4 --work-item 12345 --comment Work --yes --json",
+      "Parses the JSON result and reports the created worklog (date, hours, work item)",
+      "Fails loud on status error (e.g. expired token) and points to --auth instead of retrying blindly"
+    ]
+  },
+  {
+    "skills": ["7pace-time-tracker"],
+    "query": "Log 7:30 Mon-Thu and 7:00 Fri from 1 April until today on my usual work item.",
+    "expected_behavior": [
+      "Confirms the plan first (day count, total hours, work item) before creating a large batch",
+      "Uses range mode with the per-weekday pattern and runs a dry-run health check first",
+      "Runs the mandatory final validation (--list over the range) and reports any gap instead of declaring done"
+    ]
+  },
+  {
+    "skills": ["7pace-time-tracker"],
+    "query": "Log todays hours on the Website Redesign project - I don't know the work item number.",
+    "expected_behavior": [
+      "Resolves the name with --search first instead of guessing an ID",
+      "With multiple matches, asks the user which id (showing title, project, state)",
+      "Creates the worklog only after a single work item is confirmed"
+    ]
+  }
+]

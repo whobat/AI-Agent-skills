@@ -1,0 +1,45 @@
+---
+name: skill-name
+description: What the skill does and WHEN to use it — be specific and a little pushy, agents undertrigger. Include example user phrasings ("do X with Y", "check Z"), key terms agents can match on, and a negative trigger if a sibling skill could be confused ("Do NOT use for W — that is other-skill"). Third person, max 1024 chars, no XML tags.
+license: MIT
+compatibility: Only include if the skill has real environment requirements (runtime, permissions, network). Max 500 chars. Delete this line otherwise.
+metadata:
+  version: "1.0.0"
+---
+
+# Skill Name
+
+One-paragraph overview: what this skill achieves and the core approach
+(e.g. "the bundled script collects X as JSON; the agent writes the narrative").
+
+## How to run (script-backed skills)
+
+`SCRIPT` = this skill's `scripts/Your-Script.ps1`. Document the exact invocation,
+a table of the parameters that matter, and 2-3 copy-paste examples.
+
+## Output contract
+
+What the script prints (JSON shape, exit codes), and what goes to a file vs stdout.
+
+## What you (the agent) do with the result
+
+1. Numbered, imperative steps.
+2. Lead with what matters; don't recite everything.
+3. Fail loud: name every coverage gap, skipped section, or unverified assumption.
+
+## Errors
+
+Known failure modes → what to tell the user.
+
+<!--
+Checklist before opening a PR (see CONTRIBUTING.md):
+- [ ] Folder name == frontmatter name (lowercase, hyphens)
+- [ ] description ≤ 1024 chars, includes when-to-use triggers
+- [ ] metadata.version set; bump it on EVERY behavior change
+- [ ] SKILL.md < 500 lines; details go in REFERENCE.md (linked one level deep)
+- [ ] Scripts have tests next to them (*.Tests.ps1 / test_*.py)
+- [ ] skill.install.json if the skill needs runtimes/credentials
+- [ ] evals/<skill-name>.json with 3+ scenarios
+- [ ] No company-specific data (AGENTS.md contract) — placeholders only
+- [ ] `npm run validate` passes
+-->

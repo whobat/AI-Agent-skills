@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["win-eventlog-triage"],
+    "query": "What happened on SRV01 overnight? Any errors?",
+    "expected_behavior": [
+      "Runs Invoke-EventLogTriage.ps1 with pwsh against SRV01 (credential prompted, never passed on the command line)",
+      "Gives a short, critical-first summary led by top_critical (server + event id + provider + likely cause)",
+      "Surfaces coverage gaps loudly: unreachable/auth-failed hosts and truncated logs"
+    ]
+  },
+  {
+    "skills": ["win-eventlog-triage"],
+    "query": "Triage the event logs across our file servers for the last 12 hours - here's a host list file.",
+    "expected_behavior": [
+      "Uses -ServerListFile with -Hours 12 and -OutFile so full detail goes to a file, keeping context small",
+      "Groups related events rather than listing them flat",
+      "Reports per-host failures from summary.failures instead of implying full coverage"
+    ]
+  },
+  {
+    "skills": ["win-eventlog-triage"],
+    "query": "Check the Security log too on DC01, including warnings.",
+    "expected_behavior": [
+      "Adds -IncludeSecurity and -IncludeWarning explicitly (both are opt-in)",
+      "Notes the Security log requires appropriate audit-read rights",
+      "Keeps the summary critical-first despite the larger event volume"
+    ]
+  }
+]

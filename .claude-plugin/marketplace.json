@@ -1,0 +1,13 @@
+{
+  "name": "ai-agent-skills",
+  "owner": {
+    "name": "whobat"
+  },
+  "plugins": [
+    {
+      "name": "ai-agent-skills",
+      "source": "./",
+      "description": "Portable SKILL.md agent skills: a Microsoft Dynamics NAV 2009 toolkit (C/AL development, SQL performance triage, object deployment, service-tier admin, database maintenance, security, troubleshooting), Windows Event Log triage, 7pace time tracking, and a self-update skill."
+    }
+  ]
+}

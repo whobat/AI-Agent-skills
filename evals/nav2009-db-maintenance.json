@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-db-maintenance"],
+    "query": "Rebuild the fragmented indexes on the NAV_PROD database on SQLSRV01.",
+    "expected_behavior": [
+      "Runs the maintenance script in dry-run first and shows the exact T-SQL before -Execute",
+      "Only rebuilds/reorganizes existing NAV-owned indexes - never creates or drops indexes",
+      "Recommends an off-hours window for rebuilds on large NAV tables"
+    ]
+  },
+  {
+    "skills": ["nav2009-db-maintenance"],
+    "query": "Why is NAV slow when users post invoices?",
+    "expected_behavior": [
+      "Recognizes this is a DIAGNOSIS question and routes to nav2009-sql-performance instead of running maintenance",
+      "Does not blindly rebuild indexes as a first response to slowness",
+      "Offers maintenance only once diagnosis points to fragmentation/stale statistics"
+    ]
+  },
+  {
+    "skills": ["nav2009-db-maintenance"],
+    "query": "Take a backup of the NAV database before we deploy objects tonight.",
+    "expected_behavior": [
+      "Plans a BACKUP DATABASE via the script with an explicit target path, dry-run first",
+      "Confirms required permission (db_backupoperator/db_owner) and fails loud if missing",
+      "Verifies the backup completed (not just that the command ran) before reporting done"
+    ]
+  }
+]

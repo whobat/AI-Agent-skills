@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-sql-performance"],
+    "query": "Our Navision is really slow today, especially when posting sales orders. Can you check the SQL server SQLSRV01, database NAV_PROD?",
+    "expected_behavior": [
+      "Runs Invoke-NavSqlPerfTriage.ps1 against SQLSRV01/NAV_PROD (prefers -OutFile for a full snapshot)",
+      "Interprets findings through the NAV lens: maps read-heavy statements to C/AL key/filter mismatches and checks blocking/deadlocks on posting tables",
+      "Leads with the 2-4 findings that matter and names any failed/skipped sections instead of implying full coverage"
+    ]
+  },
+  {
+    "skills": ["nav2009-sql-performance"],
+    "query": "Users are stuck in NAV right now - everything is frozen.",
+    "expected_behavior": [
+      "Runs a live-focused subset (-Sections blocking,deadlocks,waits) rather than a full snapshot",
+      "Identifies the head blocker (session, login, host, statement) from the blocking section",
+      "Explains that an open Classic-client transaction is a user/process problem, not an index problem, when the head blocker is an idle cursor"
+    ]
+  },
+  {
+    "skills": ["nav2009-sql-performance"],
+    "query": "The missing-index DMV suggests an index on our item ledger table. Should I just create it in SSMS?",
+    "expected_behavior": [
+      "Advises against raw CREATE INDEX as the primary fix because NAV 2009 owns indexes via table keys and SIFT views",
+      "Recommends translating the suggestion into a NAV key in C/SIDE (with matching SETCURRENTKEY in code)",
+      "Notes that an out-of-band SQL index is acceptable only as a labelled stopgap that is lost on key/company changes"
+    ]
+  }
+]

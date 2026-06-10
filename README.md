@@ -1,8 +1,11 @@
 # AI-Agent-Skills
 
+[![CI](https://github.com/whobat/AI-Agent-skills/actions/workflows/ci.yml/badge.svg)](https://github.com/whobat/AI-Agent-skills/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A shared collection of **Agent Skills** — portable `SKILL.md`-based capabilities that work across multiple coding agents (Claude Code, OpenAI Codex, OpenCode, Gemini CLI, Cursor, and more).
 
-A *skill* is just a folder containing a `SKILL.md` (YAML frontmatter `name` + `description`, then Markdown instructions) plus optional `scripts/` and `references/`. The format is an [open standard](https://www.agensi.io/learn/agent-skills-open-standard), so the same folder installs into any supporting agent.
+A *skill* is just a folder containing a `SKILL.md` (YAML frontmatter + Markdown instructions) plus optional `scripts/` and `references/`. Every skill in this repo conforms to the [Agent Skills specification](https://agentskills.io/specification) — only spec-defined frontmatter fields (`name`, `description`, `license`, `compatibility`, `metadata`), validated in CI by `npm run validate` — so the same folder installs into any supporting agent. Licensed under [MIT](LICENSE); contributions welcome, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Requirements
 
@@ -69,6 +72,19 @@ AI-Agent-skills/
 | **nav2009-permissions-security** | **NAV 2009 security & permissions**: Roles/permission sets, object permissions (incl. indirect), security filters, Windows vs Database logins, NAV↔SQL synchronization and Standard vs Enhanced models, and the license-vs-permission distinction. Knowledge-only. | None. |
 | **nav2009-troubleshooting** | **NAV 2009 triage runbook**: maps a reported symptom (RTC won't connect, Service Tier won't start, login/permission/license errors, posting/locking failures, NAS/Job Queue stopped, deployment/compile errors, crashes) to a likely cause and routes to the right NAV 2009 skill. Knowledge-only. | None. |
 | **ai-agent-skills-update** | **Update skills installed from THIS repo** (and only this repo — other skills are never touched): runs the installer in `--update` mode across all agents, refreshes every installed repo skill to the latest published version, installs nothing new, preserves local `config.json`. Triggers on "update my AI-Agent-skills". | Node.js 18+ for the npx path (warned if missing; clone + `install.ps1`/`install.sh -Update` works without). |
+
+## Install as a Claude Code plugin (marketplace)
+
+Claude Code users can install everything through the native plugin system — updates then
+arrive automatically with every push to this repo:
+
+```
+/plugin marketplace add whobat/AI-Agent-skills
+/plugin install ai-agent-skills@ai-agent-skills
+```
+
+The plugin exposes all skills in `skills/`. For Codex/OpenCode (or if you want the
+runtime auto-install and credential setup), use the `npx` installer below instead.
 
 ## Install with `npx` (recommended)
 
@@ -165,7 +181,11 @@ The script reads `~/.7pace/config.json` by default; override with `--config <pat
 
 ## Verifying a skill (tests)
 
-Skills that bundle scripts may include tests.
+Skills that bundle scripts may include tests. **CI (GitHub Actions) runs everything below
+on Windows and Linux for every push/PR**, plus `npm run validate`, which checks every
+skill against the [Agent Skills specification](https://agentskills.io/specification).
+`evals/<skill>.json` holds per-skill evaluation scenarios (query + expected behavior) for
+manual/LLM-driven behavior testing.
 
 **Installer tests** live in `tests/installers/` — one suite per installer. They are
 hermetic: each test runs the installer against a throwaway repo copy with fixture
@@ -239,22 +259,27 @@ terminal. (The same file may also declare `pipPackages`, `authCommand`, `authHel
 
 ## Updating installed skills
 
-Each `SKILL.md` carries a `version:` in its frontmatter. On any install run, the
+Each `SKILL.md` carries a version under `metadata: version:` in its frontmatter (per the
+Agent Skills spec; legacy top-level `version:` in already-installed copies is still
+recognized). On any install run, the
 installer compares the **installed** version of every other skill in the target
 agent's directory against the **repo** version, and offers to update the ones that
 differ (showing `old -> new`). Updates re-copy the skill files while **preserving any
 `config.json`** inside the skill folder. Pass `-Yes` (PowerShell) / `--yes` / `-y`
 (bash, npx) to apply updates non-interactively; omit it to be prompted.
 
-So after you change a skill, bump its `version:` and re-run the installer — anyone
-who already has it installed is offered the update automatically.
+So after you change a skill, bump its `metadata.version` and re-run the installer —
+anyone who already has it installed is offered the update automatically.
 
 ## Adding a new skill
 
-1. `mkdir -p skills/<name>/scripts` and add a `SKILL.md` (frontmatter `name`, `version`, `description`, then instructions).
-2. Put any code in `scripts/`, reference docs in `REFERENCE.md`, and a `config.example.json` if it needs secrets.
+Copy [`template/skill-name/`](template/skill-name/SKILL.md) to `skills/<name>/` and follow
+[CONTRIBUTING.md](CONTRIBUTING.md). In short:
+
+1. Spec-compliant frontmatter only (`name` matching the folder, `description` ≤1024 chars with when-to-use triggers, `license: MIT`, `metadata.version`, optional `compatibility`). `npm run validate` enforces this.
+2. Put any code in `scripts/` (with tests next to it), reference docs in `REFERENCE.md`, and a `config.example.json` if it needs secrets.
 3. If it needs a runtime (Python packages, PowerShell 7, …), declare it in `skill.install.json` (see [Runtime requirements](#runtime-requirements-skillinstalljson)).
-4. Add a row to **Available skills** above. Bump `version:` whenever you change the skill so installed copies are offered the update. Commit.
+4. Add 3+ evaluation scenarios in `evals/<name>.json` and a row to **Available skills** above. Bump `metadata.version` whenever you change the skill so installed copies are offered the update. Commit.
 
 ## Sources
 

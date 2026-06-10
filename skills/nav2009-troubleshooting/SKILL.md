@@ -1,7 +1,9 @@
 ---
 name: nav2009-troubleshooting
-version: 1.0.0
 description: Triage runbook and router for Microsoft Dynamics NAV 2009 operational problems — covers RTC/Classic client can't connect, Service Tier won't start, login/permission and license errors, slowness/locking/deadlocks during posting, posting and No.-Series errors, NAS/Job Queue not running, .NET/COM failures (R2), RDLC report failures, deployment/compile failures, and crashes. It maps a reported symptom to the most likely cause and routes you to the right sibling NAV 2009 skill. Use when: a user reports any NAV/Navision error or outage and you need to find the cause fast; "RTC won't connect"; "the NAV service won't start"; "posting is failing"; "the Job Queue stopped"; or any other NAV 2009 operational complaint where the root cause is unknown.
+license: MIT
+metadata:
+  version: "1.0.1"
 ---
 
 # NAV 2009 Troubleshooting

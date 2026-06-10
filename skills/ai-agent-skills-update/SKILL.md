@@ -1,7 +1,10 @@
 ---
 name: ai-agent-skills-update
-version: 1.0.0
 description: Update skills installed FROM THE AI-Agent-skills GitHub REPO (github.com/whobat/AI-Agent-skills) to their latest published versions — it does not touch skills from any other source (plugins, other repos, hand-written skills). Runs the repo installer in update mode across Claude Code, Codex, and OpenCode, installs nothing new, and preserves local config.json files. Use when the user says "update my AI-Agent-skills", "update my skills from the repo", "opdater skills", "are my skills up to date?", or after being told a skill from this repo has a new version.
+license: MIT
+compatibility: Requires Node.js 18+ for the npx path, or a local clone of the repo for the script installers
+metadata:
+  version: "1.0.1"
 ---
 
 # AI-Agent-skills Update

@@ -1,7 +1,10 @@
 ---
 name: nav2009-db-maintenance
-version: 1.0.0
-description: SQL Server maintenance for a Microsoft Dynamics NAV 2009 database — back up, integrity-check (DBCC CHECKDB), rebuild or reorganize fragmented indexes, and update statistics. The bundled script plans each action and returns the exact T-SQL it would execute, defaulting to a safe dry run that changes nothing; pass -Execute to actually run it. Critically, the script only REBUILDS/REORGANIZES NAV-owned indexes and NEVER creates or drops them — NAV 2009 owns the physical schema through table Keys (MaintainSQLIndex) and SIFT indexed views (MaintainSIFTIndex), and out-of-band DDL is silently lost on key/company changes. Use when the user says "back up the NAV database", "rebuild fragmented indexes on NAV_PROD", "the NAV DB feels bloated/slow after a big posting run", "run a maintenance pass on the NAV SQL database", "update statistics on NAV". Requires PowerShell 7+ and SQL permissions (db_backupoperator or db_owner for backup, db_owner or ALTER INDEX for index maintenance, db_owner or sysadmin for CHECKDB).
+description: SQL Server maintenance for a Microsoft Dynamics NAV 2009 database — back up, integrity-check (DBCC CHECKDB), rebuild or reorganize fragmented indexes, and update statistics. The bundled script plans each action and returns the exact T-SQL it would execute, defaulting to a safe dry run that changes nothing; pass -Execute to actually run it. Critically, the script only REBUILDS/REORGANIZES NAV-owned indexes and NEVER creates or drops them — NAV 2009 owns the physical schema through table Keys and SIFT indexed views, and out-of-band DDL is silently lost on key/company changes. Use when the user says "back up the NAV database", "rebuild fragmented indexes on NAV_PROD", "run a maintenance pass on the NAV SQL database", "update statistics on NAV". Do NOT use for diagnosing WHY something is slow — that is nav2009-sql-performance; this skill executes the fixes. Requires PowerShell 7+ and SQL maintenance permissions (see compatibility).
+license: MIT
+compatibility: Requires PowerShell 7+ and SQL Server maintenance permissions (db_backupoperator/ALTER/db_owner depending on action)
+metadata:
+  version: "1.0.1"
 ---
 
 # NAV 2009 DB Maintenance

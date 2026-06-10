@@ -1,7 +1,10 @@
 ---
 name: nav2009-sql-performance
-version: 1.0.1
-description: Diagnose performance problems in Microsoft Dynamics NAV 2009 (Navision) and its SQL Server database. The bundled script collects a read-only DMV snapshot (top queries, waits, blocking, deadlocks, missing/unused indexes, SIFT views, fragmentation, stale stats, config) as JSON; the agent interprets it through a NAV lens — mapping SQL findings back to C/AL anti-patterns, keys, and SIFT design. Use when the user reports NAV/Navision slowness, locking/deadlocks during posting, a slow report/batch job, or wants a SQL Server health check for a NAV 2009 database. Requires PowerShell 7+ and SQL Server VIEW SERVER STATE permission.
+description: Diagnose performance problems in Microsoft Dynamics NAV 2009 (Navision) and its SQL Server database. The bundled script collects a read-only DMV snapshot (top queries, waits, blocking, deadlocks, missing/unused indexes, SIFT views, fragmentation, stale stats, config) as JSON; the agent interprets it through a NAV lens — mapping SQL findings back to C/AL anti-patterns, keys, and SIFT design. Use when the user reports NAV/Navision slowness, locking/deadlocks during posting, a slow report/batch job, or wants a SQL Server health check for a NAV 2009 database. Do NOT use to execute maintenance (backup, index rebuild, statistics) — that is nav2009-db-maintenance; this skill is read-only diagnosis. Requires PowerShell 7+ and SQL Server VIEW SERVER STATE permission.
+license: MIT
+compatibility: Requires PowerShell 7+ and SQL Server VIEW SERVER STATE / VIEW DATABASE STATE permissions
+metadata:
+  version: "1.0.2"
 ---
 
 # NAV 2009 SQL Performance Triage

@@ -1,7 +1,10 @@
 ---
 name: win-eventlog-triage
-version: 1.1.0
 description: Triage Windows Event Logs across one or many servers. Pulls Critical/Error events (System + Application by default; Security opt-in) over a time window via PowerShell Remoting (WinRM), groups them deterministically, and returns JSON the agent turns into a short, critical-first summary. Use when the user wants to check/triage/investigate Windows server event logs — e.g. "what happened on SRV01 overnight", "triage the event logs on these servers", or "any errors across the file servers in the last 12 hours". Requires PowerShell 7+ and a tier-admin credential (always prompted).
+license: MIT
+compatibility: Requires PowerShell 7+ on the operator machine and WinRM (PowerShell Remoting) enabled on the target servers
+metadata:
+  version: "1.1.1"
 ---
 
 # Windows Event Log Triage

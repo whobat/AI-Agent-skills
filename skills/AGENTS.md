@@ -10,8 +10,9 @@ This doc owns skill-authoring conventions. Per-skill behavior is documented insi
 
 ## Local Contracts
 
-- **Required files:** `SKILL.md` (YAML frontmatter `name`, `version`, `description`, then Markdown instructions). `name` must equal the folder name.
-- **Bump `version:` on every behavior change** to a skill — the installers diff installed vs repo `version` to offer updates. No bump = installed copies never get the change.
+- **Required files:** `SKILL.md` with frontmatter that follows the [Agent Skills spec](https://agentskills.io/specification) strictly — only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`; no custom top-level fields. `name` must equal the folder name; `license: MIT`; the version lives under `metadata: version: "x.y.z"`. `npm run validate` enforces all of it (also in CI).
+- **Bump `metadata.version` on every behavior change** to a skill — the installers diff installed vs repo version to offer updates. No bump = installed copies never get the change.
+- **Evals:** each skill has `evals/<name>.json` at the repo root with 3+ scenarios (`query` + `expected_behavior`); update them when behavior changes. New skills start from `template/skill-name/`.
 - **`description` is the trigger surface:** keep it specific with example phrasings; agents match on it to decide when to invoke the skill.
 - **Optional files:** `REFERENCE.md` (detailed reference), `scripts/` (code), `config.example.json` (secrets template — copy to `config.json`, which is gitignored and never committed), `skill.install.json` (install metadata).
 - **`skill.install.json` has two shapes** depending on what the skill needs:

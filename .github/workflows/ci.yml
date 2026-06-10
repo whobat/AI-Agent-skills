@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate-skills:
+    name: Skill spec validation (agentskills.io)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tests/validate-skills.mjs
+
+  windows:
+    name: Installers + skill scripts (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Skill spec validation + npx installer tests
+        run: npm test
+      - name: Pester suites (install.ps1 + all skill scripts)
+        shell: pwsh
+        run: |
+          Install-Module Pester -MinimumVersion 5.0 -Force -SkipPublisherCheck
+          $suites = @('tests/installers/Install.Tests.ps1') +
+            (Get-ChildItem skills -Recurse -Filter '*.Tests.ps1' | ForEach-Object FullName)
+          $result = Invoke-Pester -Path $suites -PassThru -Output Detailed
+          if ($result.FailedCount -gt 0) { exit 1 }
+      - name: Python unit tests (7pace-time-tracker)
+        shell: pwsh
+        run: |
+          Set-Location skills/7pace-time-tracker/scripts
+          python -m unittest test_timetracker -v
+
+  linux:
+    name: Installers + Python (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Skill spec validation + npx installer tests
+        run: npm test
+      - name: install.sh test suite
+        run: bash tests/installers/test_install_sh.sh
+      - name: Python unit tests (7pace-time-tracker)
+        run: |
+          cd skills/7pace-time-tracker/scripts
+          python -m unittest test_timetracker -v

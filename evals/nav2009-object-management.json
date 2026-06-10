@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["nav2009-object-management"],
+    "query": "Export all codeunits in the 50000-50099 range from the DEV database on SQLSRV01 to a text file.",
+    "expected_behavior": [
+      "Runs Invoke-NavObjects.ps1 with -Command Export, a Type=Codeunit;ID=50000..50099 filter, and a .txt path",
+      "Performs the dry run first and shows the exact finsql arguments before passing -Execute",
+      "Notes that .txt export requires a developer license"
+    ]
+  },
+  {
+    "skills": ["nav2009-object-management"],
+    "query": "Import this objects.fob into the production NAV database.",
+    "expected_behavior": [
+      "Treats production import as high-stakes: reviews the dry run and confirms before -Execute",
+      "Knows .fob import works with an end-user license (unlike .txt)",
+      "Derives success from navcommandresult/naverrorlog rather than the unreliable finsql exit code"
+    ]
+  },
+  {
+    "skills": ["nav2009-object-management"],
+    "query": "finsql.exe isn't on this machine - can I still deploy objects?",
+    "expected_behavior": [
+      "Explains finsql.exe ships with the NAV 2009 Classic client and cannot be auto-installed",
+      "Offers -FinSqlPath for a non-standard location, or running the skill on a machine with the Classic client",
+      "Does not silently fall back to writing raw SQL against NAV object tables"
+    ]
+  }
+]
