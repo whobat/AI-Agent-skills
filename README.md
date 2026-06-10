@@ -27,6 +27,11 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 | **win-eventlog-triage** | PowerShell 7+ (auto-installed) | — | A tier-admin credential, **prompted each run** and never stored. WinRM must be enabled on the target servers. |
 | **nav2009-development** | — (knowledge-only) | — | — |
 | **nav2009-sql-performance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth by default (or `-SqlCredential`, prompted). Needs `VIEW SERVER STATE` + `VIEW DATABASE STATE` on the SQL Server. Read-only. |
+| **nav2009-object-management** | PowerShell 7+ (auto-installed) **+ NAV 2009 `finsql.exe`** (from a NAV install — not auto-installable) | — | NAV database access. Developer license to export/import `.txt` and to compile; an end-user license suffices to import `.fob`. Defaults to a dry run. |
+| **nav2009-service-tier-admin** | PowerShell 7+ (auto-installed) | — | Local admin to read service config / restart; remote needs CIM/WinRM + admin on the target. Inventory is read-only; restart is opt-in. |
+| **nav2009-db-maintenance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth by default (or `-SqlCredential`, prompted). `db_backupoperator`/`db_owner` (backup), ALTER (index), `db_owner`/`sysadmin` (CHECKDB). Defaults to a dry run. |
+| **nav2009-permissions-security** | — (knowledge-only) | — | — |
+| **nav2009-troubleshooting** | — (knowledge-only) | — | — |
 
 ## Repository layout
 
@@ -57,6 +62,11 @@ AI-Agent-skills/
 | **win-eventlog-triage** | **Windows Event Log triage**: pulls Critical/Error events from one or many servers in parallel over WinRM, groups them, and returns JSON the agent turns into a critical-first summary. | PowerShell 7+ (auto-installed by the installer), WinRM on the targets, and a tier-admin credential (prompted each run — nothing stored). |
 | **nav2009-development** | **Dynamics NAV 2009 / C/AL development**: coding patterns, key/SIFT design, review checklist, customization architecture, reports, integrations, and BC-upgrade posture. Knowledge-only (no scripts). | None. |
 | **nav2009-sql-performance** | **NAV 2009 SQL performance triage**: read-only DMV snapshot of the SQL Server behind a NAV 2009 database (top queries, waits, blocking, deadlocks, missing/unused indexes, SIFT views, fragmentation, stale stats) as JSON, plus a NAV-specific interpretation guide for the agent. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE` on the SQL Server. |
+| **nav2009-object-management** | **NAV 2009 object deployment**: wraps the Classic dev CLI `finsql.exe` to import/export/compile C/AL objects (`.fob`/`.txt`) between databases as JSON. Defaults to a dry run that shows the exact `finsql` command; executes only with `-Execute`. | PowerShell 7+ (auto-installed) and a NAV 2009 install (`finsql.exe`) with an appropriate license. |
+| **nav2009-service-tier-admin** | **NAV 2009 Service Tier / NAS admin**: inventories NST instances (status, account, ports, parsed `CustomSettings.config`, NAS/Job Queue config) as JSON; optional opt-in restart in the correct order. Local or via `-ComputerName`. | PowerShell 7+ (auto-installed); local admin (or remote CIM/WinRM). |
+| **nav2009-db-maintenance** | **NAV 2009 SQL maintenance** (action side of the perf skill): backup, `DBCC CHECKDB`, rebuild/reorganize NAV-owned indexes, and update statistics — defaulting to a dry run that prints the exact T-SQL. Never creates/drops indexes (NAV owns them). | PowerShell 7+ (auto-installed), SQL maintenance permissions. |
+| **nav2009-permissions-security** | **NAV 2009 security & permissions**: Roles/permission sets, object permissions (incl. indirect), security filters, Windows vs Database logins, NAV↔SQL synchronization and Standard vs Enhanced models, and the license-vs-permission distinction. Knowledge-only. | None. |
+| **nav2009-troubleshooting** | **NAV 2009 triage runbook**: maps a reported symptom (RTC won't connect, Service Tier won't start, login/permission/license errors, posting/locking failures, NAS/Job Queue stopped, deployment/compile errors, crashes) to a likely cause and routes to the right NAV 2009 skill. Knowledge-only. | None. |
 
 ## Install with `npx` (recommended)
 
@@ -175,6 +185,9 @@ RUN_INTEGRATION=1 python -m unittest test_timetracker -v   # + live API (needs c
 Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser
 Invoke-Pester -Path ./skills/win-eventlog-triage/scripts/Invoke-EventLogTriage.Tests.ps1 -Output Detailed
 Invoke-Pester -Path ./skills/nav2009-sql-performance/scripts/Invoke-NavSqlPerfTriage.Tests.ps1 -Output Detailed
+Invoke-Pester -Path ./skills/nav2009-object-management/scripts/Invoke-NavObjects.Tests.ps1 -Output Detailed
+Invoke-Pester -Path ./skills/nav2009-service-tier-admin/scripts/Get-NavServiceTier.Tests.ps1 -Output Detailed
+Invoke-Pester -Path ./skills/nav2009-db-maintenance/scripts/Invoke-NavDbMaintenance.Tests.ps1 -Output Detailed
 ```
 
 ## Runtime requirements (`skill.install.json`)
