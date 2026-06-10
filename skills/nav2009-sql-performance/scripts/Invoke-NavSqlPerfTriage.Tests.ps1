@@ -39,13 +39,25 @@ Describe 'Invoke-NavSqlPerfTriage.ps1' {
                 Should -Not -BeNullOrEmpty
         }
 
-        It 'Sections ValidateSet covers all documented sections' {
-            $p = $script:Params | Where-Object { $_.Name.VariablePath.UserPath -eq 'Sections' }
-            $set = ($p.Attributes | Where-Object { $_.TypeName.Name -eq 'ValidateSet' }).PositionalArguments.Value
+        It 'declares all documented sections in $ValidSections' {
+            $content = Get-Content (Join-Path $PSScriptRoot 'Invoke-NavSqlPerfTriage.ps1') -Raw
             $expected = @('all', 'server', 'database', 'waits', 'top_queries', 'missing_indexes',
                 'unused_indexes', 'blocking', 'deadlocks', 'sift', 'fragmentation',
                 'stats', 'largest_tables')
-            foreach ($section in $expected) { $set | Should -Contain $section }
+            foreach ($section in $expected) { $content | Should -Match "'$section'" }
+        }
+
+        It 'rejects an unknown section before connecting' {
+            $null = & pwsh -NoProfile -File $script:ScriptPath `
+                -ServerInstance 'never-contacted' -Sections 'bogus_section' 2>$null
+            $LASTEXITCODE | Should -Be 1
+        }
+
+        It 'accepts a comma-joined -Sections string (pwsh -File form)' {
+            # Validation must pass and the script proceed to the connection attempt.
+            $json = & pwsh -NoProfile -File $script:ScriptPath `
+                -ServerInstance 'definitely-not-a-real-sql-host-0xDEAD' -Sections 'waits,blocking' 2>$null
+            ($json | ConvertFrom-Json).error | Should -Match 'Cannot connect'
         }
     }
 

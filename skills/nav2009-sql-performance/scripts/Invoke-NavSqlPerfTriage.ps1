@@ -32,10 +32,8 @@ param(
     # SQL authentication. Omit to use Windows integrated security.
     [pscredential]$SqlCredential,
 
-    # Which sections to collect. Default: all.
-    [ValidateSet('all', 'server', 'database', 'waits', 'top_queries', 'missing_indexes',
-        'unused_indexes', 'blocking', 'deadlocks', 'sift', 'fragmentation',
-        'stats', 'largest_tables')]
+    # Which sections to collect. Default: all. Accepts an array or a comma-joined
+    # string ('pwsh -File' passes "a,b,c" as one string) — validated below.
     [string[]]$Sections = @('all'),
 
     # Row cap for each list-producing section.
@@ -53,6 +51,17 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Normalize and validate -Sections ('pwsh -File' delivers "a,b,c" as a single string).
+$ValidSections = @('all', 'server', 'database', 'waits', 'top_queries', 'missing_indexes',
+    'unused_indexes', 'blocking', 'deadlocks', 'sift', 'fragmentation', 'stats', 'largest_tables')
+$Sections = @($Sections | ForEach-Object { $_ -split ',' } |
+    ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ })
+$invalidSections = @($Sections | Where-Object { $ValidSections -notcontains $_ })
+if ($invalidSections.Count -gt 0) {
+    [Console]::Error.WriteLine("Unknown section(s): $($invalidSections -join ', '). Valid: $($ValidSections -join ', ')")
+    exit 1
+}
 
 # ---------------------------------------------------------------------------
 # Connection
@@ -91,7 +100,7 @@ function Invoke-Sql {
         $adapter.Dispose()
         $cmd.Dispose()
     }
-    $rows = foreach ($row in $table.Rows) {
+    $rows = @(foreach ($row in $table.Rows) {
         $obj = [ordered]@{}
         foreach ($col in $table.Columns) {
             $value = $row[$col]
@@ -101,8 +110,9 @@ function Invoke-Sql {
             $obj[$col.ColumnName] = $value
         }
         $obj
-    }
-    return @($rows)
+    })
+    # ',' keeps single-row results an array through pipeline unrolling — callers index with [0]
+    return ,$rows
 }
 
 # ---------------------------------------------------------------------------
@@ -213,18 +223,18 @@ Add-Section -Name 'database' -RequiresDatabase -Body {
                is_read_committed_snapshot_on, is_auto_shrink_on, log_reuse_wait_desc
         FROM sys.databases WHERE name = @db" @{ '@db' = $Database })[0]
 
+    # sys.database_files (db context) — visible with plain db access, unlike sys.master_files
+    # which hides rows from logins without VIEW ANY DEFINITION / CREATE DATABASE.
     $info['files'] = Invoke-Sql "
-        SELECT mf.name, mf.type_desc, mf.physical_name,
-               CAST(mf.size * 8 / 1024.0 AS DECIMAL(18,1)) AS size_mb,
-               CASE WHEN mf.is_percent_growth = 1 THEN CAST(mf.growth AS VARCHAR(10)) + ' %'
-                    ELSE CAST(mf.growth * 8 / 1024 AS VARCHAR(10)) + ' MB' END AS growth,
-               mf.max_size
-        FROM sys.master_files mf
-        WHERE mf.database_id = DB_ID(@db)" @{ '@db' = $Database }
+        SELECT name, type_desc, physical_name,
+               CAST(size * 8 / 1024.0 AS DECIMAL(18,1)) AS size_mb,
+               CASE WHEN is_percent_growth = 1 THEN CAST(growth AS VARCHAR(10)) + ' %'
+                    ELSE CAST(growth * 8 / 1024 AS VARCHAR(10)) + ' MB' END AS growth,
+               max_size
+        FROM sys.database_files"
 
     $info['tempdb_data_files'] = (Invoke-Sql "
-        SELECT COUNT(*) AS n FROM sys.master_files
-        WHERE database_id = 2 AND type = 0")[0].n
+        SELECT COUNT(*) AS n FROM tempdb.sys.database_files WHERE type = 0")[0].n
     $info
 }
 
@@ -246,7 +256,14 @@ Add-Section -Name 'waits' -Body {
             'XE_DISPATCHER_WAIT','XE_DISPATCHER_JOIN','BROKER_EVENTHANDLER','TRACEWRITE',
             'FT_IFTSHC_MUTEX','SQLTRACE_INCREMENTAL_FLUSH_SLEEP','BROKER_RECEIVE_WAITFOR',
             'ONDEMAND_TASK_QUEUE','DBMIRROR_EVENTS_QUEUE','DBMIRRORING_CMD','SP_SERVER_DIAGNOSTICS_SLEEP',
-            'HADR_FILESTREAM_IOMGR_IOCOMPLETION','DIRTY_PAGE_POLL')
+            'HADR_FILESTREAM_IOMGR_IOCOMPLETION','DIRTY_PAGE_POLL',
+            'HADR_WORK_QUEUE','HADR_NOTIFICATION_DEQUEUE','HADR_TIMER_TASK','HADR_CLUSAPI_CALL',
+            'HADR_LOGCAPTURE_WAIT','PARALLEL_REDO_WORKER_WAIT_WORK','PARALLEL_REDO_DRAIN_WORKER',
+            'REDO_THREAD_PENDING_WORK','VDI_CLIENT_OTHER','BROKER_TRANSMITTER','SLEEP_BPOOL_FLUSH',
+            'QDS_ASYNC_QUEUE','QDS_PERSIST_TASK_MAIN_LOOP_SLEEP',
+            'QDS_CLEANUP_STALE_QUERIES_TASK_MAIN_LOOP_SLEEP','SQLTRACE_WAIT_ENTRIES',
+            'SOS_WORK_DISPATCHER','WAIT_XTP_HOST_WAIT','WAIT_XTP_RECOVERY',
+            'WAIT_XTP_OFFLINE_CKPT_NEW_LOG','WAIT_XTP_CKPT_CLOSE')
           AND waiting_tasks_count > 0
         ORDER BY wait_time_ms DESC"
 }
@@ -349,15 +366,17 @@ Add-Section -Name 'deadlocks' -Body {
         return [ordered]@{ note = 'system_health Extended Events session not found (SQL Server 2005 has no XEvents).'; deadlocks = @() }
     }
     [xml]$buffer = $rows[0].target_data
-    $events = @($buffer.SelectNodes("//event[@name='xml_deadlock_report']")) | Select-Object -Last $TopN
-    $deadlocks = foreach ($evt in $events) {
+    $events = @($buffer.SelectNodes("//event[@name='xml_deadlock_report']") | Select-Object -Last $TopN)
+    $deadlocks = @(foreach ($evt in $events) {
         $entry = [ordered]@{ timestamp = $evt.GetAttribute('timestamp') }
         try {
             $graphNodes = @($evt.SelectNodes(".//deadlock"))
             if ($graphNodes.Count -gt 0) {
                 $graph = $graphNodes[0]
                 $entry['victim'] = $graph.GetAttribute('victim')
-                $entry['processes'] = foreach ($p in @($graph.SelectNodes('.//process-list/process'))) {
+                $entry['processes'] = @(foreach ($p in @($graph.SelectNodes('.//process-list/process'))) {
+                    $inputbuf = $p.SelectSingleNode('inputbuf')
+                    $inputText = if ($inputbuf -and $inputbuf.InnerText) { $inputbuf.InnerText.Trim() } else { $null }
                     [ordered]@{
                         id              = $p.GetAttribute('id')
                         login           = $p.GetAttribute('loginname')
@@ -365,9 +384,9 @@ Add-Section -Name 'deadlocks' -Body {
                         application     = $p.GetAttribute('clientapp')
                         isolation_level = $p.GetAttribute('isolationlevel')
                         wait_resource   = $p.GetAttribute('waitresource')
-                        input_buffer    = if ($p.inputbuf) { ([string]$p.inputbuf).Trim().Substring(0, [math]::Min(300, ([string]$p.inputbuf).Trim().Length)) } else { $null }
+                        input_buffer    = if ($inputText) { $inputText.Substring(0, [math]::Min(300, $inputText.Length)) } else { $null }
                     }
-                }
+                })
                 $entry['objects'] = @($graph.SelectNodes('.//resource-list/*') |
                     ForEach-Object { $_.GetAttribute('objectname') } |
                     Where-Object { $_ } | Select-Object -Unique)
@@ -379,11 +398,11 @@ Add-Section -Name 'deadlocks' -Body {
             $entry['raw_xml'] = $evt.OuterXml.Substring(0, [math]::Min(4000, $evt.OuterXml.Length))
         }
         $entry
-    }
+    })
     [ordered]@{
         note      = 'From the system_health ring buffer — covers recent history only (buffer wraps). Timestamps are UTC.'
-        count     = @($deadlocks).Count
-        deadlocks = @($deadlocks)
+        count     = $deadlocks.Count
+        deadlocks = $deadlocks
     }
 }
 
