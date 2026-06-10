@@ -75,6 +75,14 @@ run_installer --agent claude --skill beta-skill --yes
 check "exit code 0" '[ "$RC" -eq 0 ]'
 check "beta-skill installed" '[ -f "$AGENT_DIR/beta-skill/SKILL.md" ]'
 check "alpha-skill not installed" '[ ! -d "$AGENT_DIR/alpha-skill" ]'
+out_contains "shows (new, version)" "(new, 2.0.0)"
+
+echo "- reinstalling over an older version shows the transition"
+new_fixture
+mkdir -p "$AGENT_DIR/beta-skill"
+frontmatter beta-skill 1.5.0 > "$AGENT_DIR/beta-skill/SKILL.md"
+run_installer --agent claude --skill beta-skill --yes
+out_contains "shows transition" "(1.5.0 -> 2.0.0)"
 
 echo "- never installs secrets or caches; keeps config.example.json"
 new_fixture

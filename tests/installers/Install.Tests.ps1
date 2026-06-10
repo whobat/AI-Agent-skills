@@ -67,12 +67,22 @@ BeforeAll {
 
 Describe 'install.ps1' {
 
-    It 'installs a single skill into the agent dir' {
+    It 'installs a single skill into the agent dir, showing (new, version)' {
         $fx = New-Fixture
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
         $r.Code | Should -Be 0
+        $r.Out | Should -Match 'installed beta-skill -> .+ \(new, 2\.0\.0\)'
         Join-Path $fx.AgentDir 'beta-skill\SKILL.md' | Should -Exist
         Join-Path $fx.AgentDir 'alpha-skill' | Should -Not -Exist
+    }
+
+    It 'reinstalling over an older version shows the transition on the install line' {
+        $fx = New-Fixture
+        $pre = Join-Path $fx.AgentDir 'beta-skill'
+        New-Item -ItemType Directory -Force $pre | Out-Null
+        Set-Content (Join-Path $pre 'SKILL.md') "---`nname: beta-skill`nversion: 1.5.0`ndescription: old`n---`n"
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
+        $r.Out | Should -Match 'installed beta-skill -> .+ \(1\.5\.0 -> 2\.0\.0\)'
     }
 
     It 'never installs secrets or caches; keeps config.example.json' {

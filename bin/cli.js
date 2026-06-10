@@ -140,23 +140,42 @@ function skillNeedsPython(name) {
   return hasPyFile(dir);
 }
 
+// "(0.9.0 -> 1.0.0)" / "(new, 1.0.0)" / "(1.0.0, reinstalled)" for the install log line.
+function versionNote(prev, repo) {
+  if (!repo) return '';
+  if (prev && prev !== repo) return ` (${prev} -> ${repo})`;
+  if (prev) return ` (${repo}, reinstalled)`;
+  return ` (new, ${repo})`;
+}
+
 function installSkill(name, destDir, symlink) {
   const src = path.join(SKILLS_DIR, name);
   const dest = path.join(destDir, name);
+  const note = versionNote(skillVersion(dest), skillVersion(src));
   fs.mkdirSync(destDir, { recursive: true });
   fs.rmSync(dest, { recursive: true, force: true });
   if (symlink) {
     fs.symlinkSync(src, dest, 'junction');
-    console.log(`  linked  ${name} -> ${dest}`);
+    console.log(`  linked  ${name} -> ${dest}${note}`);
   } else {
     fs.cpSync(src, dest, { recursive: true });
     // never install real secrets / caches
     fs.rmSync(path.join(dest, 'config.json'), { force: true });
     rmAll(dest, 'config.json');
     rmAll(dest, '__pycache__');
-    console.log(`  copied  ${name} -> ${dest}`);
+    console.log(`  copied  ${name} -> ${dest}${note}`);
   }
   return dest;
+}
+
+// "[installed 1.0.0 -> latest 1.0.2]" / "[installed 1.0.2, up to date]" / "[v1.0.2, not installed]"
+function skillStatusNote(name, agent) {
+  const repoV = skillVersion(path.join(SKILLS_DIR, name));
+  if (!repoV) return '';
+  const instV = agent && TARGETS[agent] ? skillVersion(path.join(TARGETS[agent], name)) : null;
+  if (instV && instV !== repoV) return `[installed ${instV} -> latest ${repoV}]`;
+  if (instV) return `[installed ${instV}, up to date]`;
+  return `[v${repoV}${agent ? ', not installed' : ''}]`;
 }
 
 function rmAll(dir, base) {
@@ -398,7 +417,12 @@ async function main() {
   if (args.help) { console.log(fs.readFileSync(__filename, 'utf8').split('*/')[0].replace(/^[\s\S]*?\/\*/, '')); return; }
 
   const skills = listSkills();
-  if (args.list) { console.log('Available skills:\n  ' + skills.join('\n  ')); return; }
+  if (args.list) {
+    // With --agent, also show the installed version vs the repo's latest.
+    console.log('Available skills:');
+    for (const s of skills) console.log(`  ${s}  ${skillStatusNote(s, args.agent)}`);
+    return;
+  }
 
   // agent
   let agent = args.agent;
@@ -416,7 +440,7 @@ async function main() {
   if (!skill) {
     console.log('Skill:');
     console.log('  0) all');
-    skills.forEach((s, i) => console.log(`  ${i + 1}) ${s}`));
+    skills.forEach((s, i) => console.log(`  ${i + 1}) ${s}  ${skillStatusNote(s, agent)}`));
     const pick = await ask('Choose [0-' + skills.length + ']: ');
     const n = parseInt(pick, 10);
     skill = (!n || n === 0) ? 'all' : skills[n - 1];

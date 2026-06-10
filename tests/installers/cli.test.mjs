@@ -78,19 +78,38 @@ function run(fx, args, input) {
 const agentDir = (fx) => path.join(fx.home, '.claude', 'skills');
 const credConfig = (fx) => path.join(fx.home, '.credtest', 'config.json');
 
-test('--list prints the available skills', () => {
+test('--list prints the available skills with repo versions', () => {
   const fx = mkFixture();
   const r = run(fx, ['--list']);
   assert.equal(r.status, 0);
   for (const s of ['alpha-skill', 'beta-skill', 'cred-skill']) assert.match(r.stdout, new RegExp(s));
+  assert.match(r.stdout, /beta-skill\s+\[v2\.0\.0\]/);
 });
 
-test('installs a single skill into the agent dir', () => {
+test('--list --agent shows installed vs latest per skill', () => {
+  const fx = mkFixture();
+  write(agentDir(fx), 'alpha-skill/SKILL.md', frontmatter('alpha-skill', '0.9.0'));
+  write(agentDir(fx), 'beta-skill/SKILL.md', frontmatter('beta-skill', '2.0.0'));
+  const r = run(fx, ['--list', '--agent', 'claude']);
+  assert.match(r.stdout, /alpha-skill\s+\[installed 0\.9\.0 -> latest 1\.0\.0\]/);
+  assert.match(r.stdout, /beta-skill\s+\[installed 2\.0\.0, up to date\]/);
+  assert.match(r.stdout, /cred-skill\s+\[v1\.0\.0, not installed\]/);
+});
+
+test('installs a single skill into the agent dir, showing (new, version)', () => {
   const fx = mkFixture();
   const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
   assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /copied {2}beta-skill -> .+ \(new, 2\.0\.0\)/);
   assert.ok(fs.existsSync(path.join(agentDir(fx), 'beta-skill', 'SKILL.md')));
   assert.ok(!fs.existsSync(path.join(agentDir(fx), 'alpha-skill')));
+});
+
+test('reinstalling over an older version shows the transition on the install line', () => {
+  const fx = mkFixture();
+  write(agentDir(fx), 'beta-skill/SKILL.md', frontmatter('beta-skill', '1.5.0'));
+  const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
+  assert.match(r.stdout, /copied {2}beta-skill -> .+ \(1\.5\.0 -> 2\.0\.0\)/);
 });
 
 test('never installs secrets or caches; keeps config.example.json', () => {

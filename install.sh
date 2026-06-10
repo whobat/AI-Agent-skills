@@ -239,15 +239,25 @@ fi
 for f in "${FOLDERS[@]}"; do
   name="$(basename "$f")"
   target="$DEST/$name"
+  # Show installed -> latest on the install line
+  instv="$(skill_version "$target")"
+  repov="$(skill_version "$f")"
+  note=""
+  if [ -n "$repov" ]; then
+    if [ -n "$instv" ] && [ "$instv" != "$repov" ]; then note=" ($instv -> $repov)"
+    elif [ -n "$instv" ]; then note=" ($repov, reinstalled)"
+    else note=" (new, $repov)"
+    fi
+  fi
   rm -rf "$target"
   if [ "$SYMLINK" -eq 1 ]; then
     ln -s "$f" "$target"
-    echo "  linked $name -> $target"
+    echo "  linked $name -> $target$note"
   else
     cp -r "$f" "$target"
     find "$target" -name 'config.json' -type f -delete
     find "$target" -name '__pycache__' -type d -prune -exec rm -rf {} +
-    echo "  installed $name -> $target"
+    echo "  installed $name -> $target$note"
   fi
 done
 

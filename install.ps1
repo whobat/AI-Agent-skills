@@ -238,16 +238,23 @@ if ($Skill -eq 'all') {
 
 foreach ($f in $folders) {
   $targetPath = Join-Path $dest $f.Name
+  # Show installed -> latest on the install line
+  $instV = Get-SkillVersion $targetPath
+  $repoV = Get-SkillVersion $f.FullName
+  $note = if (-not $repoV) { '' }
+          elseif ($instV -and $instV -ne $repoV) { " ($instV -> $repoV)" }
+          elseif ($instV) { " ($repoV, reinstalled)" }
+          else { " (new, $repoV)" }
   if (Test-Path $targetPath) { Remove-Item $targetPath -Recurse -Force }
   if ($Symlink) {
     New-Item -ItemType SymbolicLink -Path $targetPath -Target $f.FullName | Out-Null
-    Write-Host "  linked $($f.Name) -> $targetPath"
+    Write-Host "  linked $($f.Name) -> $targetPath$note"
   } else {
     Copy-Item $f.FullName $targetPath -Recurse
     # Never install real secrets
     Get-ChildItem $targetPath -Recurse -Include 'config.json' -File | Remove-Item -Force
     Get-ChildItem $targetPath -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
-    Write-Host "  installed $($f.Name) -> $targetPath"
+    Write-Host "  installed $($f.Name) -> $targetPath$note"
   }
 }
 
