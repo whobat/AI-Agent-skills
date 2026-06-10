@@ -1,15 +1,15 @@
-# Pester 5 tests for Invoke-NavSqlPerfTriage.ps1.
+# Pester 5 tests for Invoke-SqlPerfTriage.ps1.
 # Static/contract tests only — no SQL Server required.
 
 BeforeAll {
-    $script:ScriptPath = Join-Path $PSScriptRoot 'Invoke-NavSqlPerfTriage.ps1'
+    $script:ScriptPath = Join-Path $PSScriptRoot 'Invoke-SqlPerfTriage.ps1'
     $script:Tokens = $null
     $script:Errors = $null
     $script:Ast = [System.Management.Automation.Language.Parser]::ParseFile(
         $script:ScriptPath, [ref]$script:Tokens, [ref]$script:Errors)
 }
 
-Describe 'Invoke-NavSqlPerfTriage.ps1' {
+Describe 'Invoke-SqlPerfTriage.ps1' {
 
     It 'parses without errors' {
         $script:Errors | Should -BeNullOrEmpty
@@ -40,7 +40,7 @@ Describe 'Invoke-NavSqlPerfTriage.ps1' {
         }
 
         It 'declares all documented sections in $ValidSections' {
-            $content = Get-Content (Join-Path $PSScriptRoot 'Invoke-NavSqlPerfTriage.ps1') -Raw
+            $content = Get-Content (Join-Path $PSScriptRoot 'Invoke-SqlPerfTriage.ps1') -Raw
             $expected = @('all', 'server', 'database', 'waits', 'top_queries', 'missing_indexes',
                 'unused_indexes', 'blocking', 'deadlocks', 'sift', 'fragmentation',
                 'stats', 'largest_tables')

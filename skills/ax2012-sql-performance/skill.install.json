@@ -1,0 +1,13 @@
+{
+  "requirements": [
+    {
+      "name": "PowerShell 7",
+      "detect": "pwsh",
+      "minVersion": "7.0",
+      "wingetId": "Microsoft.PowerShell",
+      "brewCask": "powershell",
+      "githubRepo": "PowerShell/PowerShell",
+      "url": "https://github.com/PowerShell/PowerShell/releases/latest"
+    }
+  ]
+}

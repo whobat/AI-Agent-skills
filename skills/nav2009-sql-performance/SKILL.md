@@ -4,17 +4,17 @@ description: Diagnose performance problems in Microsoft Dynamics NAV 2009 (Navis
 license: MIT
 compatibility: Requires PowerShell 7+ and SQL Server VIEW SERVER STATE / VIEW DATABASE STATE permissions
 metadata:
-  version: "1.0.2"
+  version: "1.0.3"
 ---
 
 # NAV 2009 SQL Performance Triage
 
 > Targets **SQL Server instances hosting Dynamics NAV 2009 databases**. The bundled script
-> `scripts/Invoke-NavSqlPerfTriage.ps1` collects a **read-only** diagnostic snapshot and emits
+> `scripts/Invoke-SqlPerfTriage.ps1` collects a **read-only** diagnostic snapshot and emits
 > JSON; **the agent (you) writes the analysis.** The script never modifies server or database
 > state and never calls an LLM.
 
-`SCRIPT` = this skill's `scripts/Invoke-NavSqlPerfTriage.ps1`. Requires **PowerShell 7+** (`pwsh`)
+`SCRIPT` = this skill's `scripts/Invoke-SqlPerfTriage.ps1`. Requires **PowerShell 7+** (`pwsh`)
 and network access to the SQL Server. The full SQL-finding → NAV-action interpretation guide is in
 [REFERENCE.md](REFERENCE.md) — read it before writing your analysis.
 

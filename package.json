@@ -7,8 +7,8 @@
   },
   "license": "MIT",
   "scripts": {
-    "validate": "node tests/validate-skills.mjs",
-    "test": "node tests/validate-skills.mjs && node --test tests/installers/cli.test.mjs"
+    "validate": "node tests/validate-skills.mjs && node tests/check-vendored-parity.mjs",
+    "test": "node tests/validate-skills.mjs && node tests/check-vendored-parity.mjs && node --test tests/installers/cli.test.mjs"
   },
   "files": [
     "bin",

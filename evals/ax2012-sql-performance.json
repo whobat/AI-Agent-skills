@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["ax2012-sql-performance"],
+    "query": "Our AX 2012 R3 is slow, especially posting and MRP. The database is MicrosoftDynamicsAX on SQLSRV01.",
+    "expected_behavior": [
+      "Runs the triage script against the AX database with -OutFile",
+      "Checks largest_tables for the classic AX bloat tables (InventSumLogTTS, SysDatabaseLog, batch history, AIF logs) and maps them to their standard in-AX cleanup routines",
+      "Verifies RCSI is ON (expected for AX 2012) and notes TF4136/MAXDOP posture without applying changes blindly"
+    ]
+  },
+  {
+    "skills": ["ax2012-sql-performance"],
+    "query": "The Retail channel database keeps growing and the POS tills get stale prices.",
+    "expected_behavior": [
+      "Runs the triage against the channel database AND points at CDX sync health on the HQ side (failed download sessions / distribution schedules) as the likely root cause",
+      "Does not invent exact channel table names - recommends verifying schema per CU before direct queries",
+      "Suggests retail-pos-fleet-health for the POS side if the channel DB looks healthy"
+    ]
+  },
+  {
+    "skills": ["ax2012-sql-performance"],
+    "query": "The missing-index DMV suggests three indexes on INVENTTRANS. Create them?",
+    "expected_behavior": [
+      "Warns that AX owns indexes through the AOT and database synchronization drops SQL-only indexes",
+      "Recommends consolidating the suggestions and adding the index in the AOT, then synchronizing",
+      "Accepts a raw SQL index only as a documented stopgap"
+    ]
+  }
+]

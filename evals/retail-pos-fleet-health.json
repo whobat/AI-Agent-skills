@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["retail-pos-fleet-health"],
+    "query": "Can you sweep all our POS machines and tell me which ones need attention? Host list is in C:\\ops\\pos-hosts.txt.",
+    "expected_behavior": [
+      "Runs Invoke-PosFleetHealth.ps1 with -ServerListFile and -OutFile (credential prompted, never on the command line)",
+      "Leads with summary.warnings grouped by type and machine - not 100 per-host reports",
+      "Reports unreachable/auth-failed hosts explicitly as possible incidents, never implying full coverage"
+    ]
+  },
+  {
+    "skills": ["retail-pos-fleet-health"],
+    "query": "Is any POS offline database getting close to the SQL Express limit?",
+    "expected_behavior": [
+      "Runs the sweep and reads express_db_near_limit warnings (databases at >=80% of the 10 GB data limit)",
+      "Explains the consequence: at the cap the offline database stops accepting writes and the till stops syncing",
+      "Recommends checking the sync chain to the channel DB before shrinking anything"
+    ]
+  },
+  {
+    "skills": ["retail-pos-fleet-health"],
+    "query": "POS042 is acting up - the cashier says it's slow and sometimes freezes.",
+    "expected_behavior": [
+      "Sweeps just that host (-ComputerName POS042) and reads services, disk, SQL and error counts",
+      "Correlates stopped auto-start services with recent_errors.top_providers",
+      "Routes deeper follow-up correctly: win-eventlog-triage for event detail, sqlserver-perf-triage for the local SQL instance"
+    ]
+  }
+]

@@ -1,6 +1,6 @@
 # nav2009-sql-performance — Reference
 
-Detailed reference for `scripts/Invoke-NavSqlPerfTriage.ps1` and the NAV 2009 interpretation
+Detailed reference for `scripts/Invoke-SqlPerfTriage.ps1` and the NAV 2009 interpretation
 guide. For the agent-facing workflow see [SKILL.md](SKILL.md).
 
 ## Requirements
