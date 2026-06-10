@@ -1,5 +1,6 @@
 {
   "authCommand": "python scripts/timetracker.py --auth",
+  "configPath": "~/.7pace/config.json",
   "requires": ["Python 3.8+"],
   "pipPackages": ["requests"],
   "description": "Optional: run after install to enter your 7pace token + Azure DevOps PAT into ~/.7pace/config.json",

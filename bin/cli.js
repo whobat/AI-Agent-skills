@@ -183,7 +183,16 @@ function pipInstallForSkill(installedDir, py) {
   }
 }
 
+// Resolve a manifest's configPath (e.g. "~/.7pace/config.json") to an absolute path. null if undeclared.
+function resolveConfigPath(p) {
+  if (!p) return null;
+  if (p === '~') return os.homedir();
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(os.homedir(), p.slice(2));
+  return path.resolve(p);
+}
+
 // Print where to obtain the skill's credentials (from skill.install.json authHelp).
+// If the skill's config file already exists, say so instead of dumping setup instructions.
 function printAuthHelp(installedDir) {
   const manifest = path.join(installedDir, 'skill.install.json');
   if (!fs.existsSync(manifest)) return;
@@ -191,20 +200,39 @@ function printAuthHelp(installedDir) {
   try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
   const help = Array.isArray(m.authHelp) ? m.authHelp : [];
   if (!m.authCommand && help.length === 0) return;
+  const cfg = resolveConfigPath(m.configPath);
+  if (cfg && fs.existsSync(cfg)) {
+    console.log(`\nCredentials for "${path.basename(installedDir)}": already configured (${cfg}).`);
+    return;
+  }
   console.log(`\nCredential setup for "${path.basename(installedDir)}":`);
   if (m.authCommand) console.log(`  run: ${m.authCommand}`);
   for (const line of help) console.log(`  ${line}`);
 }
 
-async function maybeRunAuth(installedDir, autoYes, py) {
+// Run a skill's credential setup (authCommand). When its config file already exists, the
+// user is asked whether to update the tokens or keep them; default is keep and continue.
+async function maybeRunAuth(installedDir, opts, py) {
   const manifest = path.join(installedDir, 'skill.install.json');
   if (!fs.existsSync(manifest)) return;
-  let cmd;
-  try { cmd = JSON.parse(fs.readFileSync(manifest, 'utf8')).authCommand; } catch { return; }
+  let m;
+  try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
+  const cmd = m.authCommand;
   if (!cmd) return;
-  if (!autoYes) {
-    const ans = (await ask(`Set up credentials for "${path.basename(installedDir)}" now? [y/N] `)).toLowerCase();
-    if (ans !== 'y' && ans !== 'yes' && ans !== 'j' && ans !== 'ja') return;
+  const name = path.basename(installedDir);
+  const yesAnswers = ['y', 'yes', 'j', 'ja'];
+  const cfg = resolveConfigPath(m.configPath);
+  if (cfg && fs.existsSync(cfg)) {
+    if (!opts.interactive) {
+      console.log(`  ${name}: credentials already configured (${cfg}) — skipping auth.`);
+      return;
+    }
+    const ans = (await ask(`Credentials for "${name}" already configured (${cfg}). Update tokens? [y/N] `)).toLowerCase();
+    if (!yesAnswers.includes(ans)) { console.log('  keeping existing credentials.'); return; }
+  } else if (!opts.explicit) {
+    if (!opts.interactive) return;
+    const ans = (await ask(`Set up credentials for "${name}" now? [y/N] `)).toLowerCase();
+    if (!yesAnswers.includes(ans)) return;
   }
   const parts = cmd.split(' ');
   if (parts[0] === 'python') {
@@ -402,10 +430,10 @@ async function main() {
   // Always show where to get credentials for any skill that needs them
   for (const dir of installed) printAuthHelp(dir);
 
-  // auth: explicit --auth runs it; otherwise (interactive) confirm per skill; --yes without --auth skips
+  // auth: --auth runs setup directly; otherwise (interactive) confirm per skill. Skills whose
+  // config already exists are detected — the user chooses update or keep (keep is the default).
   for (const dir of installed) {
-    if (args.auth) await maybeRunAuth(dir, true, py);
-    else if (!args.yes) await maybeRunAuth(dir, false, py);
+    await maybeRunAuth(dir, { explicit: args.auth, interactive: !args.yes }, py);
   }
 
   // Offer to update other already-installed skills whose repo version changed

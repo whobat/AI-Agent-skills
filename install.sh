@@ -70,6 +70,7 @@ PYEOF
 }
 
 # Print where to obtain a skill's credentials (from its skill.install.json authHelp).
+# If the skill's config file (configPath) already exists, say so instead of token instructions.
 # Uses the resolved python ($2) to parse JSON; no-op if python is unavailable.
 print_auth_help() {
   local manifest="$1" py="$2"
@@ -85,8 +86,15 @@ ac = m.get("authCommand")
 help_lines = m.get("authHelp") or []
 if not (ac or help_lines):
     sys.exit(0)
+name = os.path.basename(os.path.dirname(sys.argv[1]))
+cfg = m.get("configPath")
+if cfg and os.path.exists(os.path.expanduser(cfg)):
+    print()
+    print("Credentials for %s: already configured (%s). Run '%s' to update tokens."
+          % (name, os.path.expanduser(cfg), ac))
+    sys.exit(0)
 print()
-print("Credential setup for %s:" % os.path.basename(os.path.dirname(sys.argv[1])))
+print("Credential setup for %s:" % name)
 if ac:
     print("  run: %s" % ac)
 for line in help_lines:

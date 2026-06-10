@@ -73,7 +73,7 @@ npx github:whobat/AI-Agent-skills --agent codex  --skill 7pace-time-tracker --au
 
 Flags: `--agent claude|codex|opencode` · `--skill all|<name>` · `--auth` (run a skill's credential setup after install) · `--symlink` · `--list` · `-y/--yes` · `-h`.
 
-The installer copies skill folders into the agent's skills dir and **never copies real `config.json`** (only `config.example.json`). With `--auth` (or when prompted), it runs the skill's credential setup so your tokens are entered securely and saved locally — see [Configuration & secrets](#configuration--secrets).
+The installer copies skill folders into the agent's skills dir and **never copies real `config.json`** (only `config.example.json`). With `--auth` (or when prompted), it runs the skill's credential setup so your tokens are entered securely and saved locally — see [Configuration & secrets](#configuration--secrets). If a skill's credentials are **already configured** (its `configPath` file exists, e.g. `~/.7pace/config.json`), the installer detects it and asks whether to **update the tokens or keep them** (keep is the default) instead of prompting for setup from scratch.
 
 ## Install with the bundled scripts (no Node)
 
@@ -191,7 +191,8 @@ finishing, **auto-installing** any that are missing:
 - **Linux / no package manager:** prints the `url` to install manually.
 
 If a runtime is installed but not yet on `PATH` for the current shell, open a **new**
-terminal. (The same file may also declare `pipPackages`, `authCommand`, `authHelp`.)
+terminal. (The same file may also declare `pipPackages`, `authCommand`, `authHelp`, and
+`configPath` — the location of the skill's credential file, e.g. `~/.7pace/config.json`.)
 
 ## Updating installed skills
 

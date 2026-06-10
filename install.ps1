@@ -53,13 +53,22 @@ function Install-PipDeps($manifestPath, $py) {
 }
 
 # Print where to obtain a skill's credentials (from its skill.install.json authHelp).
+# If the skill's config file (configPath) already exists, say so instead of token instructions.
 function Write-AuthHelp($manifestPath) {
   if (-not (Test-Path $manifestPath)) { return }
   try { $m = Get-Content $manifestPath -Raw | ConvertFrom-Json } catch { return }
   $ac = $m.authCommand
   $help = $m.authHelp
   if (-not $ac -and -not $help) { return }
-  Write-Host "`nCredential setup for $(Split-Path -Leaf (Split-Path -Parent $manifestPath)):"
+  $name = Split-Path -Leaf (Split-Path -Parent $manifestPath)
+  if ($m.configPath) {
+    $cfg = if ($m.configPath -match '^~[/\\]?') { Join-Path $HOME ($m.configPath -replace '^~[/\\]?', '') } else { $m.configPath }
+    if (Test-Path $cfg) {
+      Write-Host "`nCredentials for ${name}: already configured ($cfg). Run '$ac' to update tokens."
+      return
+    }
+  }
+  Write-Host "`nCredential setup for ${name}:"
   if ($ac) { Write-Host "  run: $ac" }
   foreach ($line in $help) { Write-Host "  $line" }
 }
