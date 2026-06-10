@@ -230,6 +230,19 @@ test('warnOnly requirement present via detectPaths: reports OK, no warning', () 
   assert.doesNotMatch(r.stdout + r.stderr, /WARNING: Fake Tool/);
 });
 
+test('--agent all installs into every agent skills dir', () => {
+  const fx = mkFixture();
+  const r = run(fx, ['--agent', 'all', '--skill', 'beta-skill', '--yes']);
+  assert.equal(r.status, 0, r.stderr);
+  for (const dir of [
+    path.join(fx.home, '.claude', 'skills'),
+    path.join(fx.home, '.agents', 'skills'),
+    path.join(fx.home, '.config', 'opencode', 'skills'),
+  ]) {
+    assert.ok(fs.existsSync(path.join(dir, 'beta-skill', 'SKILL.md')), dir);
+  }
+});
+
 test('--symlink links instead of copying', () => {
   const fx = mkFixture();
   const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--symlink', '--yes']);

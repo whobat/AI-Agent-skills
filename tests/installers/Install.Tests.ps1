@@ -103,6 +103,15 @@ Describe 'install.ps1' {
         }
     }
 
+    It '-Agent all installs into every agent skills dir' {
+        $fx = New-Fixture
+        $r = Invoke-Installer $fx @('-Agent', 'all', '-Skill', 'beta-skill', '-Yes')
+        $r.Code | Should -Be 0
+        foreach ($dir in @('.claude\skills', '.agents\skills', '.config\opencode\skills')) {
+            Join-Path $fx.Home "$dir\beta-skill\SKILL.md" | Should -Exist
+        }
+    }
+
     It 'fails on an unknown skill' {
         $fx = New-Fixture
         (Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'nope', '-Yes')).Code | Should -Not -Be 0

@@ -7,7 +7,7 @@
   ./install.ps1 -Agent codex  -Skill tidsregistrering
 #>
 param(
-  [Parameter(Mandatory = $true)][ValidateSet('claude', 'codex', 'opencode')][string]$Agent,
+  [Parameter(Mandatory = $true)][ValidateSet('claude', 'codex', 'opencode', 'all')][string]$Agent,
   [string]$Skill = 'all',
   [switch]$Symlink,
   [switch]$Yes
@@ -224,8 +224,8 @@ $targets = @{
   codex    = Join-Path $HOME '.agents/skills'
   opencode = Join-Path $HOME '.config/opencode/skills'
 }
-$dest = $targets[$Agent]
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
+# -Agent all installs into every supported agent's skills dir
+$agentList = @(if ($Agent -eq 'all') { 'claude', 'codex', 'opencode' } else { $Agent })
 
 # Resolve which skill folders to install
 if ($Skill -eq 'all') {
@@ -235,6 +235,11 @@ if ($Skill -eq 'all') {
   if (-not (Test-Path $one)) { throw "Skill '$Skill' findes ikke i $skillsSrc" }
   $folders = @(Get-Item $one)
 }
+
+foreach ($agentName in $agentList) {
+$dest = $targets[$agentName]
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+Write-Host "`nInstalling into $agentName ($dest)"
 
 foreach ($f in $folders) {
   $targetPath = Join-Path $dest $f.Name
@@ -257,6 +262,11 @@ foreach ($f in $folders) {
     Write-Host "  installed $($f.Name) -> $targetPath$note"
   }
 }
+}
+
+# Machine-level steps below run once per skill — the manifests are identical across agents,
+# so use each skill's copy under the first agent's dir.
+$dest = $targets[$agentList[0]]
 
 # Ensure each installed skill's declared runtime requirements (e.g. PowerShell 7) are present
 foreach ($f in $folders) {
@@ -287,7 +297,9 @@ foreach ($f in $folders) {
 }
 
 # Offer to update other already-installed skills whose repo version has changed
-Update-OutdatedSkills $dest $skillsSrc @($folders | ForEach-Object { $_.Name })
+foreach ($agentName in $agentList) {
+  Update-OutdatedSkills $targets[$agentName] $skillsSrc @($folders | ForEach-Object { $_.Name })
+}
 
-Write-Host "`nDone. $Agent skills dir: $dest"
+Write-Host "`nDone. Skills dir(s): $(($agentList | ForEach-Object { $targets[$_] }) -join '; ')"
 Write-Host "Reminder: skills needing secrets ship config.example.json — copy to config.json and add your tokens."

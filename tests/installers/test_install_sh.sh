@@ -99,6 +99,14 @@ for s in alpha-skill beta-skill cred-skill; do
   check "$s installed" "[ -f \"$AGENT_DIR/$s/SKILL.md\" ]"
 done
 
+echo "- --agent all installs into every agent skills dir"
+new_fixture
+run_installer --agent all --skill beta-skill --yes
+check "exit code 0" '[ "$RC" -eq 0 ]'
+check "claude dir" '[ -f "$FAKE_HOME/.claude/skills/beta-skill/SKILL.md" ]'
+check "codex dir" '[ -f "$FAKE_HOME/.agents/skills/beta-skill/SKILL.md" ]'
+check "opencode dir" '[ -f "$FAKE_HOME/.config/opencode/skills/beta-skill/SKILL.md" ]'
+
 echo "- fails on unknown skill / missing agent"
 new_fixture
 run_installer --agent claude --skill nope --yes

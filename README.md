@@ -81,7 +81,7 @@ npx github:whobat/AI-Agent-skills --agent claude --skill all
 npx github:whobat/AI-Agent-skills --agent codex  --skill 7pace-time-tracker --auth
 ```
 
-Flags: `--agent claude|codex|opencode` · `--skill all|<name>` · `--auth` (run a skill's credential setup after install) · `--symlink` · `--list` · `-y/--yes` · `-h`.
+Flags: `--agent claude|codex|opencode|all` (`all` = every agent in one run) · `--skill all|<name>` · `--auth` (run a skill's credential setup after install) · `--symlink` · `--list` (add `--agent` to see installed vs latest versions) · `-y/--yes` · `-h`.
 
 The installer copies skill folders into the agent's skills dir and **never copies real `config.json`** (only `config.example.json`). With `--auth` (or when prompted), it runs the skill's credential setup so your tokens are entered securely and saved locally — see [Configuration & secrets](#configuration--secrets). If a skill's credentials are **already configured** (its `configPath` file exists, e.g. `~/.7pace/config.json`), the installer detects it and asks whether to **update the tokens or keep them** (keep is the default) instead of prompting for setup from scratch.
 
@@ -101,7 +101,7 @@ If you've cloned the repo and prefer not to use Node:
 ./install.sh --agent codex --skill 7pace-time-tracker
 ```
 
-`-Agent`/`--agent`: `claude` · `codex` · `opencode`.  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy, or `-Yes`/`--yes` to auto-apply runtime installs and skill updates without prompting.
+`-Agent`/`--agent`: `claude` · `codex` · `opencode` · `all` (every agent in one run).  `-Skill`/`--skill`: `all` or a skill folder name. Add `-Symlink`/`--symlink` to link instead of copy, or `-Yes`/`--yes` to auto-apply runtime installs and skill updates without prompting.
 
 ## Manual install (per agent)
 

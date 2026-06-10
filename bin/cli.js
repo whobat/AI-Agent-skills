@@ -7,7 +7,7 @@
  *   npx github:whobat/AI-Agent-skills --agent codex --skill tidsregistrering --auth
  *
  * Flags:
- *   --agent <claude|codex|opencode>   target agent (prompted if omitted)
+ *   --agent <claude|codex|opencode|all>   target agent(s) (prompted if omitted)
  *   --skill <name|all>                skill to install (prompted if omitted)
  *   --auth                            run a skill's credential setup after install
  *   --symlink                         symlink instead of copy
@@ -424,23 +424,29 @@ async function main() {
     return;
   }
 
-  // agent
+  // agent ('all' = every supported agent)
   let agent = args.agent;
   if (!agent) {
     const keys = Object.keys(TARGETS);
     console.log('Target agent:');
+    console.log('  0) all  (every agent below)');
     keys.forEach((k, i) => console.log(`  ${i + 1}) ${k}  (${TARGETS[k]})`));
-    const pick = await ask('Choose [1-' + keys.length + ']: ');
-    agent = keys[(parseInt(pick, 10) || 1) - 1];
+    const pick = await ask('Choose [0-' + keys.length + ']: ');
+    const n = parseInt(pick, 10);
+    agent = n === 0 ? 'all' : keys[(n || 1) - 1];
   }
-  if (!TARGETS[agent]) { console.error(`Unknown agent "${agent}". Use: ${Object.keys(TARGETS).join(', ')}`); process.exit(1); }
+  if (agent !== 'all' && !TARGETS[agent]) {
+    console.error(`Unknown agent "${agent}". Use: ${Object.keys(TARGETS).join(', ')}, all`);
+    process.exit(1);
+  }
+  const agents = agent === 'all' ? Object.keys(TARGETS) : [agent];
 
   // skill
   let skill = args.skill;
   if (!skill) {
     console.log('Skill:');
     console.log('  0) all');
-    skills.forEach((s, i) => console.log(`  ${i + 1}) ${s}  ${skillStatusNote(s, agent)}`));
+    skills.forEach((s, i) => console.log(`  ${i + 1}) ${s}  ${skillStatusNote(s, agent === 'all' ? null : agent)}`));
     const pick = await ask('Choose [0-' + skills.length + ']: ');
     const n = parseInt(pick, 10);
     skill = (!n || n === 0) ? 'all' : skills[n - 1];
@@ -450,11 +456,17 @@ async function main() {
     if (!skills.includes(s)) { console.error(`Skill "${s}" not found. Available: ${skills.join(', ')}`); process.exit(1); }
   }
 
-  console.log(`\nInstalling [${chosen.join(', ')}] into ${agent} (${TARGETS[agent]})\n`);
-  const installed = chosen.map((s) => installSkill(s, TARGETS[agent], args.symlink));
+  for (const a of agents) {
+    console.log(`\nInstalling [${chosen.join(', ')}] into ${a} (${TARGETS[a]})\n`);
+    for (const s of chosen) installSkill(s, TARGETS[a], args.symlink);
+  }
+
+  // Machine-level steps (runtimes, pip, credentials) run once per skill — the manifests are
+  // identical across agents, so use each skill's copy under the first agent dir.
+  const skillDirs = chosen.map((s) => path.join(TARGETS[agents[0]], s));
 
   // Ensure declared runtime requirements (e.g. PowerShell 7) for each installed skill
-  for (const dir of installed) await ensureRequirements(dir, args.yes);
+  for (const dir of skillDirs) await ensureRequirements(dir, args.yes);
 
   // Ensure Python is present for any skill that needs it (.py scripts or a python auth command).
   let py = null;
@@ -463,19 +475,19 @@ async function main() {
   }
 
   // Install each skill's Python dependencies
-  for (const dir of installed) pipInstallForSkill(dir, py);
+  for (const dir of skillDirs) pipInstallForSkill(dir, py);
 
   // Always show where to get credentials for any skill that needs them
-  for (const dir of installed) printAuthHelp(dir);
+  for (const dir of skillDirs) printAuthHelp(dir);
 
   // auth: --auth runs setup directly; otherwise (interactive) confirm per skill. Skills whose
   // config already exists are detected — the user chooses update or keep (keep is the default).
-  for (const dir of installed) {
+  for (const dir of skillDirs) {
     await maybeRunAuth(dir, { explicit: args.auth, interactive: !args.yes }, py);
   }
 
   // Offer to update other already-installed skills whose repo version changed
-  await updateOutdated(TARGETS[agent], chosen, args.yes);
+  for (const a of agents) await updateOutdated(TARGETS[a], chosen, args.yes);
 
   console.log('\nDone.');
   console.log('Skills needing secrets ship config.example.json — or run with --auth to enter keys now.');

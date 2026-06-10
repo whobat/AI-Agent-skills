@@ -221,13 +221,20 @@ update_outdated() {
   done
 }
 
+agent_dest() {
+  case "$1" in
+    claude)   echo "$HOME/.claude/skills" ;;
+    codex)    echo "$HOME/.agents/skills" ;;
+    opencode) echo "$HOME/.config/opencode/skills" ;;
+  esac
+}
+
+# --agent all installs into every supported agent's skills dir
 case "$AGENT" in
-  claude)   DEST="$HOME/.claude/skills" ;;
-  codex)    DEST="$HOME/.agents/skills" ;;
-  opencode) DEST="$HOME/.config/opencode/skills" ;;
-  *) echo "Angiv --agent claude|codex|opencode" >&2; exit 1 ;;
+  all)                     AGENTS=(claude codex opencode) ;;
+  claude|codex|opencode)   AGENTS=("$AGENT") ;;
+  *) echo "Angiv --agent claude|codex|opencode|all" >&2; exit 1 ;;
 esac
-mkdir -p "$DEST"
 
 if [ "$SKILL" = "all" ]; then
   mapfile -t FOLDERS < <(find "$SRC" -mindepth 1 -maxdepth 1 -type d)
@@ -235,6 +242,12 @@ else
   [ -d "$SRC/$SKILL" ] || { echo "Skill '$SKILL' findes ikke i $SRC" >&2; exit 1; }
   FOLDERS=("$SRC/$SKILL")
 fi
+
+for a in "${AGENTS[@]}"; do
+DEST="$(agent_dest "$a")"
+mkdir -p "$DEST"
+echo
+echo "Installing into $a ($DEST)"
 
 for f in "${FOLDERS[@]}"; do
   name="$(basename "$f")"
@@ -260,6 +273,11 @@ for f in "${FOLDERS[@]}"; do
     echo "  installed $name -> $target$note"
   fi
 done
+done
+
+# Machine-level steps below run once per skill — the manifests are identical across agents,
+# so use each skill's copy under the first agent's dir.
+DEST="$(agent_dest "${AGENTS[0]}")"
 
 # Ensure each installed skill's declared runtime requirements (e.g. PowerShell 7) are present
 for f in "${FOLDERS[@]}"; do
@@ -293,8 +311,10 @@ done
 # Offer to update other already-installed skills whose repo version changed
 CHOSEN_NAMES=()
 for f in "${FOLDERS[@]}"; do CHOSEN_NAMES+=("$(basename "$f")"); done
-update_outdated "$DEST" "$SRC" "${CHOSEN_NAMES[@]}"
+for a in "${AGENTS[@]}"; do
+  update_outdated "$(agent_dest "$a")" "$SRC" "${CHOSEN_NAMES[@]}"
+done
 
 echo
-echo "Done. $AGENT skills dir: $DEST"
+for a in "${AGENTS[@]}"; do echo "Done. $a skills dir: $(agent_dest "$a")"; done
 echo "Reminder: skills needing secrets ship config.example.json — copy to config.json and add your tokens."
