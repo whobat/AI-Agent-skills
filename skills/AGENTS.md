@@ -15,7 +15,7 @@ This doc owns skill-authoring conventions. Per-skill behavior is documented insi
 - **`description` is the trigger surface:** keep it specific with example phrasings; agents match on it to decide when to invoke the skill.
 - **Optional files:** `REFERENCE.md` (detailed reference), `scripts/` (code), `config.example.json` (secrets template — copy to `config.json`, which is gitignored and never committed), `skill.install.json` (install metadata).
 - **`skill.install.json` has two shapes** depending on what the skill needs:
-  - Runtime auto-install: a `requirements` array of `{name, detect, minVersion, wingetId, brewCask, githubRepo, url}` (see `nav2009-sql-performance`, `win-eventlog-triage`).
+  - Runtime auto-install: a `requirements` array of `{name, detect, minVersion, wingetId, brewCask, githubRepo, url}` (see `nav2009-sql-performance`, `win-eventlog-triage`). Requirements that can't be auto-installed (e.g. `finsql.exe`) add `detectPaths` (file locations counting as present), `warnOnly: true`, and `help` — installers warn and continue instead of installing (see `nav2009-object-management`).
   - Credentials / packages: `authCommand`, `configPath`, `requires`, `pipPackages`, `description`, `authHelp` (see `7pace-time-tracker`).
 - **Secrets stay out of git:** ship only `config.example.json`. The installers strip `config.json` and `__pycache__/` on copy.
 - **Adding a skill:** create the folder + files above, then add its row to the **Available skills** and requirements tables in the root [README.md](../README.md).

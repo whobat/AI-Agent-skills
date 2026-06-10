@@ -133,18 +133,40 @@ ensure_requirements() {
     echo "  (skipping requirement check for $(basename "$(dirname "$manifest")") — no python to read manifest)" >&2
     return 0
   fi
-  "$py" - "$manifest" <<'PYEOF' | while IFS="$(printf '\t')" read -r name detect minv brew url; do
+  # Fields are joined with ASCII Unit Separator (\x1f): tab/space are "IFS whitespace"
+  # in POSIX read, so empty fields would collapse and shift the columns.
+  "$py" - "$manifest" <<'PYEOF' | while IFS=$'\x1f' read -r name detect minv brew url paths warnonly help; do
 import json, sys
 try:
     m = json.load(open(sys.argv[1], encoding="utf-8"))
 except Exception:
     sys.exit(0)
 for r in (m.get("requirements") or []):
-    print("\t".join([str(r.get("name","")), str(r.get("detect","")),
-                     str(r.get("minVersion","")), str(r.get("brewCask","")), str(r.get("url",""))]))
+    print("\x1f".join([str(r.get("name","")), str(r.get("detect","")),
+                       str(r.get("minVersion","")), str(r.get("brewCask","")), str(r.get("url","")),
+                       "|".join(r.get("detectPaths") or []),
+                       "1" if r.get("warnOnly") else "0",
+                       str(r.get("help",""))]))
 PYEOF
-    [ -n "$detect" ] || continue
-    if command_exists "$detect"; then echo "  requirement OK: $name"; continue; fi
+    [ -n "$detect" ] || [ -n "$paths" ] || continue
+    # Present if the command is on PATH or any declared file path exists.
+    found=0
+    if [ -n "$detect" ] && command_exists "$detect"; then found=1; fi
+    if [ "$found" -eq 0 ] && [ -n "$paths" ]; then
+      IFS='|' read -ra path_list <<< "$paths"
+      for p in "${path_list[@]}"; do
+        [ -f "$p" ] && { found=1; break; }
+      done
+    fi
+    if [ "$found" -eq 1 ]; then echo "  requirement OK: $name"; continue; fi
+    # warnOnly requirements (e.g. NAV 2009 finsql.exe) cannot be auto-installed — warn and continue.
+    if [ "$warnonly" = "1" ]; then
+      echo "  ! WARNING: $name not found." >&2
+      [ -n "$paths" ] && echo "    checked: ${paths//|/; }" >&2
+      [ -n "$help" ] && echo "    $help" >&2
+      [ -n "$url" ] && echo "    $url" >&2
+      continue
+    fi
     echo "  requirement missing: $name"
     if [ "$(uname)" = "Darwin" ] && command_exists brew && [ -n "$brew" ]; then
       echo "  installing via: brew install --cask $brew"

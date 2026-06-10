@@ -264,8 +264,14 @@ function semverGte(a, b) {
   return true;
 }
 
-// Is a declared requirement satisfied (on PATH, and >= minVersion when checkable)?
+// Is a declared requirement satisfied (on PATH or at a known file path, and >= minVersion when checkable)?
 function requirementPresent(req) {
+  if (Array.isArray(req.detectPaths)) {
+    for (const p of req.detectPaths) {
+      if (fs.existsSync(p)) return true;
+    }
+  }
+  if (!req.detect) return false;
   if (!commandExists(req.detect)) return false;
   if (req.minVersion) {
     let r = spawnSync(req.detect, ['--version'], { encoding: 'utf8' });
@@ -333,8 +339,16 @@ async function ensureRequirements(installedDir, autoYes) {
   try { m = JSON.parse(fs.readFileSync(manifest, 'utf8')); } catch { return; }
   const reqs = Array.isArray(m.requirements) ? m.requirements : [];
   for (const req of reqs) {
-    if (!req || !req.detect) continue;
+    if (!req || (!req.detect && !Array.isArray(req.detectPaths))) continue;
     if (requirementPresent(req)) { console.log(`  requirement OK: ${req.name}`); continue; }
+    // warnOnly requirements (e.g. NAV 2009 finsql.exe) cannot be auto-installed — warn and continue.
+    if (req.warnOnly) {
+      console.warn(`  ! WARNING: ${req.name} not found.`);
+      if (Array.isArray(req.detectPaths)) console.warn(`    checked: ${req.detectPaths.join('; ')}`);
+      if (req.help) console.warn(`    ${req.help}`);
+      if (req.url) console.warn(`    ${req.url}`);
+      continue;
+    }
     console.log(`  requirement missing: ${req.name}`);
     if (!autoYes) {
       const ans = (await ask(`  Install ${req.name} now? [Y/n] `)).toLowerCase();

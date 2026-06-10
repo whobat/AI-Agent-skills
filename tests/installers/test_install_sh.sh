@@ -44,6 +44,21 @@ new_fixture() {
   "authHelp": ["Get your token at https://example.test"]
 }
 EOF
+  # tool-skill: warnOnly requirement detected via file paths (not auto-installable, e.g. finsql.exe)
+  TOOL_PATH="$TMP/fake-tool.exe"
+  mkdir -p "$s/tool-skill"
+  frontmatter tool-skill 1.0.0 > "$s/tool-skill/SKILL.md"
+  cat > "$s/tool-skill/skill.install.json" <<EOF
+{
+  "requirements": [{
+    "name": "Fake Tool",
+    "detectPaths": ["$TOOL_PATH"],
+    "warnOnly": true,
+    "help": "Install Fake Tool manually.",
+    "url": "https://example.test/tool"
+  }]
+}
+EOF
 }
 
 # run_installer <args...> — runs install.sh against the fixture; output in $OUT, rc in $RC.
@@ -92,6 +107,24 @@ run_installer --agent claude --skill beta-skill --yes
 out_contains "update offered/applied" "alpha-skill: 0.9.0 -> 1.0.0"
 check "SKILL.md updated to 1.0.0" 'grep -q "version: 1.0.0" "$AGENT_DIR/alpha-skill/SKILL.md"'
 check "config.json preserved" '[ "$(cat "$AGENT_DIR/alpha-skill/config.json")" = "{\"keep\":\"me\"}" ]'
+
+if HOME="$FAKE_HOME" bash -c 'command -v python || command -v python3 || command -v py' >/dev/null 2>&1; then
+  echo "- warnOnly requirement missing: warns but install succeeds"
+  new_fixture
+  run_installer --agent claude --skill tool-skill --yes
+  check "exit code 0" '[ "$RC" -eq 0 ]'
+  out_contains "warning shown" "Fake Tool not found"
+  out_contains "checked paths shown" "fake-tool.exe"
+  out_contains "help shown" "Install Fake Tool manually"
+  check "skill still installed" '[ -f "$AGENT_DIR/tool-skill/SKILL.md" ]'
+
+  echo "- warnOnly requirement present via detectPaths: reports OK, no warning"
+  new_fixture
+  printf 'x' > "$TOOL_PATH"
+  run_installer --agent claude --skill tool-skill --yes
+  out_contains "requirement OK" "requirement OK: Fake Tool"
+  out_lacks "no warning" "Fake Tool not found"
+fi
 
 if HOME="$FAKE_HOME" bash -c 'command -v python || command -v python3 || command -v py' >/dev/null 2>&1; then
   echo "- unconfigured: prints credential setup help"

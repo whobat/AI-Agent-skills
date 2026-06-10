@@ -36,7 +36,21 @@ BeforeAll {
             authHelp    = @('Get your token at https://example.test')
         } | ConvertTo-Json)
 
-        [pscustomobject]@{ Tmp = $tmp; Repo = $repo; Home = $home_; AgentDir = Join-Path $home_ '.claude\skills' }
+        # tool-skill: warnOnly requirement detected via file paths (not auto-installable, e.g. finsql.exe)
+        $toolPath = Join-Path $tmp 'fake-tool.exe'
+        New-Item -ItemType Directory -Force (Join-Path $skills 'tool-skill') | Out-Null
+        Set-Content (Join-Path $skills 'tool-skill\SKILL.md') (fm 'tool-skill' '1.0.0')
+        Set-Content (Join-Path $skills 'tool-skill\skill.install.json') (@{
+            requirements = @(@{
+                name        = 'Fake Tool'
+                detectPaths = @($toolPath)
+                warnOnly    = $true
+                help        = 'Install Fake Tool manually.'
+                url         = 'https://example.test/tool'
+            })
+        } | ConvertTo-Json -Depth 5)
+
+        [pscustomobject]@{ Tmp = $tmp; Repo = $repo; Home = $home_; AgentDir = Join-Path $home_ '.claude\skills'; ToolPath = $toolPath }
     }
 
     function script:Invoke-Installer($fx, [string[]]$InstallerArgs) {
@@ -101,6 +115,24 @@ Describe 'install.ps1' {
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'cred-skill', '-Yes')
         $r.Out | Should -Match 'Credential setup for cred-skill'
         $r.Out | Should -Match 'example\.test'
+    }
+
+    It 'warnOnly requirement missing: warns but install succeeds' {
+        $fx = New-Fixture
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'tool-skill', '-Yes')
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match 'Fake Tool not found'
+        $r.Out | Should -Match 'fake-tool\.exe'
+        $r.Out | Should -Match 'Install Fake Tool manually'
+        Join-Path $fx.AgentDir 'tool-skill\SKILL.md' | Should -Exist
+    }
+
+    It 'warnOnly requirement present via detectPaths: reports OK, no warning' {
+        $fx = New-Fixture
+        Set-Content $fx.ToolPath 'x'
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'tool-skill', '-Yes')
+        $r.Out | Should -Match 'requirement OK: Fake Tool'
+        $r.Out | Should -Not -Match 'Fake Tool not found'
     }
 
     It 'configured: prints "already configured" instead of token instructions' {

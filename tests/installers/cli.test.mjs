@@ -52,7 +52,19 @@ function mkFixture() {
     'fs.mkdirSync(dir, { recursive: true });',
     `fs.writeFileSync(path.join(dir, 'config.json'), '{"token":"new"}');`,
   ].join('\n'));
-  return { tmp, repo, home };
+  // tool-skill: warnOnly requirement detected via file paths (not auto-installable, e.g. finsql.exe)
+  const toolPath = path.join(tmp, 'fake-tool.exe');
+  write(skills, 'tool-skill/SKILL.md', frontmatter('tool-skill', '1.0.0'));
+  write(skills, 'tool-skill/skill.install.json', JSON.stringify({
+    requirements: [{
+      name: 'Fake Tool',
+      detectPaths: [toolPath],
+      warnOnly: true,
+      help: 'Install Fake Tool manually.',
+      url: 'https://example.test/tool',
+    }],
+  }, null, 2));
+  return { tmp, repo, home, toolPath };
 }
 
 function run(fx, args, input) {
@@ -177,6 +189,26 @@ test('configured: help collapses to a one-line "already configured" message', ()
   const r = run(fx, ['--agent', 'claude', '--skill', 'cred-skill', '--yes']);
   assert.match(r.stdout, /Credentials for "cred-skill": already configured/);
   assert.doesNotMatch(r.stdout, /example\.test/, 'token help must not be dumped when configured');
+});
+
+test('warnOnly requirement missing: warns with paths/help but install succeeds', () => {
+  const fx = mkFixture();
+  const r = run(fx, ['--agent', 'claude', '--skill', 'tool-skill', '--yes']);
+  assert.equal(r.status, 0, r.stderr);
+  const out = r.stdout + r.stderr;
+  assert.match(out, /WARNING: Fake Tool not found/);
+  assert.match(out, /fake-tool\.exe/);
+  assert.match(out, /Install Fake Tool manually/);
+  assert.ok(fs.existsSync(path.join(agentDir(fx), 'tool-skill', 'SKILL.md')), 'skill must still install');
+});
+
+test('warnOnly requirement present via detectPaths: reports OK, no warning', () => {
+  const fx = mkFixture();
+  fs.writeFileSync(fx.toolPath, 'x');
+  const r = run(fx, ['--agent', 'claude', '--skill', 'tool-skill', '--yes']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /requirement OK: Fake Tool/);
+  assert.doesNotMatch(r.stdout + r.stderr, /WARNING: Fake Tool/);
 });
 
 test('--symlink links instead of copying', () => {

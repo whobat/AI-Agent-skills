@@ -218,6 +218,13 @@ finishing, **auto-installing** any that are missing:
 - **macOS:** `brew install --cask <brewCask>`.
 - **Linux / no package manager:** prints the `url` to install manually.
 
+Requirements that **cannot be auto-installed** (e.g. NAV 2009's `finsql.exe`, which only
+ships with the NAV Classic client) instead declare `detectPaths` (file locations to check —
+the installer also accepts these as present) and `"warnOnly": true` plus a `help` text: the
+installer then prints a **warning with the checked paths and guidance** and continues — the
+skill still installs, since the tool may live on another machine or a custom path
+(the script's `-FinSqlPath` overrides detection at runtime).
+
 If a runtime is installed but not yet on `PATH` for the current shell, open a **new**
 terminal. (The same file may also declare `pipPackages`, `authCommand`, `authHelp`, and
 `configPath` — the location of the skill's credential file, e.g. `~/.7pace/config.json`.)

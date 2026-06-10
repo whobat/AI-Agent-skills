@@ -100,8 +100,12 @@ function Get-SkillVersion($skillDir) {
   return $null
 }
 
-# Is a declared requirement already satisfied (on PATH, and >= minVersion when checkable)?
+# Is a declared requirement already satisfied (on PATH or at a known file path, and >= minVersion when checkable)?
 function Test-RequirementPresent($req) {
+  foreach ($p in @($req.detectPaths)) {
+    if ($p -and (Test-Path $p)) { return $true }
+  }
+  if (-not $req.detect) { return $false }
   $cmd = Get-Command $req.detect -ErrorAction SilentlyContinue
   if (-not $cmd) { return $false }
   if ($req.minVersion) {
@@ -159,6 +163,14 @@ function Resolve-Requirements($manifestPath) {
   foreach ($req in @($m.requirements)) {
     if (-not $req) { continue }
     if (Test-RequirementPresent $req) { Write-Host "  requirement OK: $($req.name)"; continue }
+    # warnOnly requirements (e.g. NAV 2009 finsql.exe) cannot be auto-installed — warn and continue.
+    if ($req.warnOnly) {
+      Write-Warning "$($req.name) not found."
+      if ($req.detectPaths) { Write-Host "    checked: $(@($req.detectPaths) -join '; ')" }
+      if ($req.help) { Write-Host "    $($req.help)" }
+      if ($req.url) { Write-Host "    $($req.url)" }
+      continue
+    }
     Write-Host "  requirement missing: $($req.name) - installing ..."
     [void](Install-Requirement $req)
     if (Test-RequirementPresent $req) { Write-Host "  $($req.name) ready" }
