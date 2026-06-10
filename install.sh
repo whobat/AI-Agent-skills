@@ -7,11 +7,12 @@
 #   ./install.sh --agent opencode --skill all --symlink
 set -euo pipefail
 
-AGENT=""; SKILL="all"; SYMLINK=0; YES=0
+AGENT=""; SKILL="all"; SYMLINK=0; YES=0; UPDATE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --agent)   AGENT="${2:-}"; shift 2 ;;
     --skill)   SKILL="${2:-}"; shift 2 ;;
+    --update)  UPDATE=1; shift ;;
     --symlink) SYMLINK=1; shift ;;
     -y|--yes)  YES=1; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -179,11 +180,13 @@ PYEOF
 }
 
 # Offer to update already-installed skills (from this repo) whose version differs from the repo.
+# Sets UPD_CANDIDATES to the number of update candidates found (0 = everything current).
 update_outdated() {
   local dest="$1" src="$2"; shift 2
   local chosen=" $* "
   local d name instv repov i ans
   local cand_name=() cand_from=() cand_to=()
+  UPD_CANDIDATES=0
   for d in "$dest"/*/; do
     [ -d "$d" ] || continue
     name="$(basename "$d")"
@@ -197,6 +200,7 @@ update_outdated() {
     fi
   done
   [ "${#cand_name[@]}" -gt 0 ] || return 0
+  UPD_CANDIDATES="${#cand_name[@]}"
   echo
   echo "Updates available for already-installed skills:"
   for i in "${!cand_name[@]}"; do echo "  ${cand_name[$i]}: ${cand_from[$i]} -> ${cand_to[$i]}"; done
@@ -235,6 +239,19 @@ case "$AGENT" in
   claude|codex|opencode)   AGENTS=("$AGENT") ;;
   *) echo "Angiv --agent claude|codex|opencode|all" >&2; exit 1 ;;
 esac
+
+# --update: refresh installed skills to the repo versions; install nothing new
+if [ "$UPDATE" -eq 1 ]; then
+  for a in "${AGENTS[@]}"; do
+    echo
+    echo "Checking for skill updates in $a ($(agent_dest "$a"))"
+    update_outdated "$(agent_dest "$a")" "$SRC"
+    [ "${UPD_CANDIDATES:-0}" -eq 0 ] && echo "  all installed skills are up to date."
+  done
+  echo
+  echo "Done."
+  exit 0
+fi
 
 if [ "$SKILL" = "all" ]; then
   mapfile -t FOLDERS < <(find "$SRC" -mindepth 1 -maxdepth 1 -type d)

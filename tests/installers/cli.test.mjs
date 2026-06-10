@@ -230,6 +230,20 @@ test('warnOnly requirement present via detectPaths: reports OK, no warning', () 
   assert.doesNotMatch(r.stdout + r.stderr, /WARNING: Fake Tool/);
 });
 
+test('--update refreshes installed skills only, preserving config; second run is up to date', () => {
+  const fx = mkFixture();
+  write(agentDir(fx), 'alpha-skill/SKILL.md', frontmatter('alpha-skill', '0.9.0'));
+  write(agentDir(fx), 'alpha-skill/config.json', '{"keep":"me"}');
+  const r = run(fx, ['--update', '--agent', 'claude', '--yes']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /alpha-skill: 0\.9\.0 -> 1\.0\.0/);
+  assert.match(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'SKILL.md'), 'utf8'), /version: 1\.0\.0/);
+  assert.equal(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'config.json'), 'utf8'), '{"keep":"me"}');
+  assert.ok(!fs.existsSync(path.join(agentDir(fx), 'beta-skill')), 'must not install new skills');
+  const r2 = run(fx, ['--update', '--agent', 'claude', '--yes']);
+  assert.match(r2.stdout, /all installed skills are up to date/);
+});
+
 test('--agent all installs into every agent skills dir', () => {
   const fx = mkFixture();
   const r = run(fx, ['--agent', 'all', '--skill', 'beta-skill', '--yes']);

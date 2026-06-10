@@ -10,6 +10,7 @@ param(
   [Parameter(Mandatory = $true)][ValidateSet('claude', 'codex', 'opencode', 'all')][string]$Agent,
   [string]$Skill = 'all',
   [switch]$Symlink,
+  [switch]$Update,
   [switch]$Yes
 )
 
@@ -179,8 +180,9 @@ function Resolve-Requirements($manifestPath) {
 }
 
 # Offer to update already-installed skills (from this repo) whose version differs from the repo.
+# Returns the number of update candidates found (0 = everything already current).
 function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
-  if (-not (Test-Path $dest)) { return }
+  if (-not (Test-Path $dest)) { return 0 }
   $candidates = @()
   foreach ($d in (Get-ChildItem -Directory $dest -ErrorAction SilentlyContinue)) {
     if ($chosenNames -contains $d.Name) { continue }          # just (re)installed above
@@ -192,7 +194,7 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
       $candidates += [pscustomobject]@{ Name = $d.Name; From = $instV; To = $repoV }
     }
   }
-  if ($candidates.Count -eq 0) { return }
+  if ($candidates.Count -eq 0) { return 0 }
   Write-Host "`nUpdates available for already-installed skills:"
   foreach ($c in $candidates) {
     $from = if ($c.From) { $c.From } else { 'unknown' }
@@ -200,7 +202,7 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
   }
   if (-not $Yes) {
     $ans = Read-Host 'Update these now? [Y/n]'
-    if ($ans -and ($ans.Trim().ToLower() -in @('n', 'no', 'nej'))) { return }
+    if ($ans -and ($ans.Trim().ToLower() -in @('n', 'no', 'nej'))) { return $candidates.Count }
   }
   foreach ($c in $candidates) {
     $srcDir = Join-Path $skillsSrc $c.Name
@@ -217,6 +219,7 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
     Write-Host "  updated $($c.Name) -> $($c.To)"
     Resolve-Requirements (Join-Path $tp 'skill.install.json')
   }
+  return $candidates.Count
 }
 
 $targets = @{
@@ -226,6 +229,17 @@ $targets = @{
 }
 # -Agent all installs into every supported agent's skills dir
 $agentList = @(if ($Agent -eq 'all') { 'claude', 'codex', 'opencode' } else { $Agent })
+
+# -Update: refresh installed skills to the repo versions; install nothing new
+if ($Update) {
+  foreach ($agentName in $agentList) {
+    Write-Host "`nChecking for skill updates in $agentName ($($targets[$agentName]))"
+    $n = Update-OutdatedSkills $targets[$agentName] $skillsSrc @()
+    if ($n -eq 0) { Write-Host '  all installed skills are up to date.' }
+  }
+  Write-Host "`nDone."
+  exit 0
+}
 
 # Resolve which skill folders to install
 if ($Skill -eq 'all') {
@@ -298,7 +312,7 @@ foreach ($f in $folders) {
 
 # Offer to update other already-installed skills whose repo version has changed
 foreach ($agentName in $agentList) {
-  Update-OutdatedSkills $targets[$agentName] $skillsSrc @($folders | ForEach-Object { $_.Name })
+  $null = Update-OutdatedSkills $targets[$agentName] $skillsSrc @($folders | ForEach-Object { $_.Name })
 }
 
 Write-Host "`nDone. Skills dir(s): $(($agentList | ForEach-Object { $targets[$_] }) -join '; ')"

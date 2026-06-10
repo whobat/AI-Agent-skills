@@ -9,6 +9,7 @@
  * Flags:
  *   --agent <claude|codex|opencode|all>   target agent(s) (prompted if omitted)
  *   --skill <name|all>                skill to install (prompted if omitted)
+ *   --update                          update installed skills to the repo versions (installs nothing new)
  *   --auth                            run a skill's credential setup after install
  *   --symlink                         symlink instead of copy
  *   --list                            list available skills and exit
@@ -32,11 +33,12 @@ const TARGETS = {
 };
 
 function parseArgs(argv) {
-  const a = { agent: null, skill: null, auth: false, symlink: false, list: false, yes: false, help: false };
+  const a = { agent: null, skill: null, auth: false, symlink: false, list: false, yes: false, help: false, update: false };
   for (let i = 0; i < argv.length; i++) {
     const v = argv[i];
     if (v === '--agent') a.agent = argv[++i];
     else if (v === '--skill') a.skill = argv[++i];
+    else if (v === '--update') a.update = true;
     else if (v === '--auth') a.auth = true;
     else if (v === '--symlink') a.symlink = true;
     else if (v === '--list') a.list = true;
@@ -380,8 +382,9 @@ async function ensureRequirements(installedDir, autoYes) {
 }
 
 // Offer to update already-installed skills (from this repo) whose version differs from the repo.
+// Returns the number of update candidates found (0 = everything already current).
 async function updateOutdated(destDir, chosenNames, autoYes) {
-  if (!fs.existsSync(destDir)) return;
+  if (!fs.existsSync(destDir)) return 0;
   const candidates = [];
   for (const e of fs.readdirSync(destDir, { withFileTypes: true })) {
     if (!e.isDirectory() || chosenNames.includes(e.name)) continue;
@@ -391,12 +394,12 @@ async function updateOutdated(destDir, chosenNames, autoYes) {
     const repoV = skillVersion(srcDir);
     if (repoV && instV !== repoV) candidates.push({ name: e.name, from: instV || 'unknown', to: repoV });
   }
-  if (candidates.length === 0) return;
+  if (candidates.length === 0) return 0;
   console.log('\nUpdates available for already-installed skills:');
   for (const c of candidates) console.log(`  ${c.name}: ${c.from} -> ${c.to}`);
   if (!autoYes) {
     const ans = (await ask('Update these now? [Y/n] ')).toLowerCase();
-    if (ans === 'n' || ans === 'no' || ans === 'nej') return;
+    if (ans === 'n' || ans === 'no' || ans === 'nej') return candidates.length;
   }
   for (const c of candidates) {
     const dest = path.join(destDir, c.name);
@@ -410,6 +413,7 @@ async function updateOutdated(destDir, chosenNames, autoYes) {
     console.log(`  updated ${c.name} -> ${c.to}`);
     await ensureRequirements(dest, autoYes);
   }
+  return candidates.length;
 }
 
 async function main() {
@@ -440,6 +444,17 @@ async function main() {
     process.exit(1);
   }
   const agents = agent === 'all' ? Object.keys(TARGETS) : [agent];
+
+  // --update: refresh installed skills to the repo versions; install nothing new
+  if (args.update) {
+    for (const a of agents) {
+      console.log(`\nChecking for skill updates in ${a} (${TARGETS[a]})`);
+      const n = await updateOutdated(TARGETS[a], [], args.yes);
+      if (n === 0) console.log('  all installed skills are up to date.');
+    }
+    console.log('\nDone.');
+    return;
+  }
 
   // skill
   let skill = args.skill;

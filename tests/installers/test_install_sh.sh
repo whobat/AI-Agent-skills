@@ -99,6 +99,20 @@ for s in alpha-skill beta-skill cred-skill; do
   check "$s installed" "[ -f \"$AGENT_DIR/$s/SKILL.md\" ]"
 done
 
+echo "- --update refreshes installed skills only, preserving config"
+new_fixture
+mkdir -p "$AGENT_DIR/alpha-skill"
+frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
+printf '{"keep":"me"}' > "$AGENT_DIR/alpha-skill/config.json"
+run_installer --agent claude --update --yes
+check "exit code 0" '[ "$RC" -eq 0 ]'
+out_contains "update applied" "alpha-skill: 0.9.0 -> 1.0.0"
+check "SKILL.md updated" 'grep -q "version: 1.0.0" "$AGENT_DIR/alpha-skill/SKILL.md"'
+check "config preserved" '[ "$(cat "$AGENT_DIR/alpha-skill/config.json")" = "{\"keep\":\"me\"}" ]'
+check "no new skills installed" '[ ! -d "$AGENT_DIR/beta-skill" ]'
+run_installer --agent claude --update --yes
+out_contains "second run up to date" "all installed skills are up to date"
+
 echo "- --agent all installs into every agent skills dir"
 new_fixture
 run_installer --agent all --skill beta-skill --yes

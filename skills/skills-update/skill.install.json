@@ -1,0 +1,12 @@
+{
+  "requirements": [
+    {
+      "name": "Node.js 18+",
+      "detect": "node",
+      "minVersion": "18.0",
+      "warnOnly": true,
+      "help": "Needed for the npx update path. Without Node, update from a local clone instead: ./install.ps1 -Agent all -Update -Yes (or ./install.sh --agent all --update --yes).",
+      "url": "https://nodejs.org/"
+    }
+  ]
+}

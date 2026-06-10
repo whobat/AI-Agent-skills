@@ -129,6 +129,22 @@ Describe 'install.ps1' {
         Get-Content (Join-Path $pre 'config.json') -Raw | Should -Be '{"keep":"me"}'
     }
 
+    It '-Update refreshes installed skills only, preserving config; second run is up to date' {
+        $fx = New-Fixture
+        $pre = Join-Path $fx.AgentDir 'alpha-skill'
+        New-Item -ItemType Directory -Force $pre | Out-Null
+        Set-Content (Join-Path $pre 'SKILL.md') "---`nname: alpha-skill`nversion: 0.9.0`ndescription: old`n---`n"
+        Set-Content (Join-Path $pre 'config.json') '{"keep":"me"}' -NoNewline
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Update', '-Yes')
+        $r.Code | Should -Be 0
+        $r.Out | Should -Match 'alpha-skill: 0\.9\.0 -> 1\.0\.0'
+        Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: 1\.0\.0'
+        Get-Content (Join-Path $pre 'config.json') -Raw | Should -Be '{"keep":"me"}'
+        Join-Path $fx.AgentDir 'beta-skill' | Should -Not -Exist
+        $r2 = Invoke-Installer $fx @('-Agent', 'claude', '-Update', '-Yes')
+        $r2.Out | Should -Match 'all installed skills are up to date'
+    }
+
     It 'unconfigured: prints credential setup help' {
         $fx = New-Fixture
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'cred-skill', '-Yes')
