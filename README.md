@@ -14,7 +14,7 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 |-------------|------------------|-------|
 | **Node.js 18+** | Only for the `npx` installer (`bin/cli.js`). | Not needed if you use `install.ps1` / `install.sh` or copy folders manually. |
 | **Python 3.8+** | Any skill that ships `.py` scripts (currently **7pace-time-tracker**). | All three installers **auto-detect Python and offer to install it** when a Python-based skill is selected — via `winget` (Windows), `brew` (macOS), or `apt-get`/`dnf` (Linux). If no package manager is found, install manually from [python.org](https://www.python.org/downloads/). The installers also **`pip install` each skill's Python packages** (declared in `skill.install.json`). |
-| **PowerShell 7+** | Any skill that declares it as a requirement (currently **win-eventlog-triage**). | All three installers **auto-install it** when such a skill is selected: `winget install Microsoft.PowerShell` on Windows (falling back to downloading + silently running the latest MSI from GitHub if `winget` is absent), `brew install --cask powershell` on macOS. See [Runtime requirements](#runtime-requirements-skillinstalljson). |
+| **PowerShell 7+** | Any skill that declares it as a requirement (currently **win-eventlog-triage** and **nav2009-sql-performance**). | All three installers **auto-install it** when such a skill is selected: `winget install Microsoft.PowerShell` on Windows (falling back to downloading + silently running the latest MSI from GitHub if `winget` is absent), `brew install --cask powershell` on macOS. See [Runtime requirements](#runtime-requirements-skillinstalljson). |
 | **A supported package manager** | Only for the auto-install above. | `winget` / `brew` / `apt-get` / `dnf`. Without one, install the runtime yourself, then re-run. |
 
 > After an auto-install, Python may not be on `PATH` for the current terminal session — open a **new** terminal (or re-run the installer) so the freshly installed `python` is found.
@@ -25,6 +25,8 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 |-------|---------|-----------------|-------------|
 | **7pace-time-tracker** | Python 3.8+ | `requests` (installed automatically) | `config.json` with a 7pace **Bearer token** (worklog CRUD) + optional Azure DevOps **PAT** (work-item search). See [Configuration & secrets](#configuration--secrets). |
 | **win-eventlog-triage** | PowerShell 7+ (auto-installed) | — | A tier-admin credential, **prompted each run** and never stored. WinRM must be enabled on the target servers. |
+| **nav2009-development** | — (knowledge-only) | — | — |
+| **nav2009-sql-performance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth by default (or `-SqlCredential`, prompted). Needs `VIEW SERVER STATE` + `VIEW DATABASE STATE` on the SQL Server. Read-only. |
 
 ## Repository layout
 
@@ -53,6 +55,8 @@ AI-Agent-skills/
 |-------|--------------|-------------|
 | **7pace-time-tracker** | **7pace Timetracker** (Azure DevOps): create/edit/delete time entries via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [Configuration & secrets](#configuration--secrets)). |
 | **win-eventlog-triage** | **Windows Event Log triage**: pulls Critical/Error events from one or many servers in parallel over WinRM, groups them, and returns JSON the agent turns into a critical-first summary. | PowerShell 7+ (auto-installed by the installer), WinRM on the targets, and a tier-admin credential (prompted each run — nothing stored). |
+| **nav2009-development** | **Dynamics NAV 2009 / C/AL development**: coding patterns, key/SIFT design, review checklist, customization architecture, reports, integrations, and BC-upgrade posture. Knowledge-only (no scripts). | None. |
+| **nav2009-sql-performance** | **NAV 2009 SQL performance triage**: read-only DMV snapshot of the SQL Server behind a NAV 2009 database (top queries, waits, blocking, deadlocks, missing/unused indexes, SIFT views, fragmentation, stale stats) as JSON, plus a NAV-specific interpretation guide for the agent. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE` on the SQL Server. |
 
 ## Install with `npx` (recommended)
 
@@ -155,6 +159,7 @@ RUN_INTEGRATION=1 python -m unittest test_timetracker -v   # + live API (needs c
 # PowerShell / Pester (win-eventlog-triage)
 Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser
 Invoke-Pester -Path ./skills/win-eventlog-triage/scripts/Invoke-EventLogTriage.Tests.ps1 -Output Detailed
+Invoke-Pester -Path ./skills/nav2009-sql-performance/scripts/Invoke-NavSqlPerfTriage.Tests.ps1 -Output Detailed
 ```
 
 ## Runtime requirements (`skill.install.json`)
