@@ -149,6 +149,21 @@ The script reads `~/.7pace/config.json` by default; override with `--config <pat
 
 Skills that bundle scripts may include tests.
 
+**Installer tests** live in `tests/installers/` — one suite per installer. They are
+hermetic: each test runs the installer against a throwaway repo copy with fixture
+skills and a **fake HOME**, so your real skills dirs, configs, and network are never
+touched. They cover install/`all`, secret stripping (`config.json`/`__pycache__`),
+version updates (incl. preserving an installed `config.json`), error exits, and the
+credential detection (configured → update-or-keep / "already configured").
+
+```bash
+npm test                                                    # npx installer (Node 18+)
+bash tests/installers/test_install_sh.sh                    # install.sh (needs bash 4+)
+```
+```powershell
+Invoke-Pester -Path ./tests/installers/Install.Tests.ps1 -Output Detailed   # install.ps1
+```
+
 ```bash
 # Python (7pace-time-tracker)
 cd skills/7pace-time-tracker/scripts

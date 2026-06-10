@@ -5,6 +5,9 @@
   "bin": {
     "ai-agent-skills": "bin/cli.js"
   },
+  "scripts": {
+    "test": "node --test tests/installers/cli.test.mjs"
+  },
   "files": [
     "bin",
     "skills"
