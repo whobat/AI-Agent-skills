@@ -1,14 +1,16 @@
 ---
-name: skills-update
+name: ai-agent-skills-update
 version: 1.0.0
-description: Update installed agent skills directly from the AI-Agent-skills GitHub repo. Runs the repo installer in update mode — refreshes every already-installed skill to the latest published version (across Claude Code, Codex, and OpenCode) without installing anything new, preserving local config.json files. Use when the user says "update my skills", "opdater skills", "are my skills up to date?", or after being told a skill has a new version.
+description: Update skills installed FROM THE AI-Agent-skills GitHub REPO (github.com/whobat/AI-Agent-skills) to their latest published versions — it does not touch skills from any other source (plugins, other repos, hand-written skills). Runs the repo installer in update mode across Claude Code, Codex, and OpenCode, installs nothing new, and preserves local config.json files. Use when the user says "update my AI-Agent-skills", "update my skills from the repo", "opdater skills", "are my skills up to date?", or after being told a skill from this repo has a new version.
 ---
 
-# Skills Update
+# AI-Agent-skills Update
 
-Updates every skill from the [AI-Agent-skills repo](https://github.com/whobat/AI-Agent-skills)
-that is installed on this machine to the latest published version. Installs **nothing new** —
-only refreshes what is already there. A `config.json` inside a skill folder is preserved.
+Updates every skill **originating from the [AI-Agent-skills repo](https://github.com/whobat/AI-Agent-skills)**
+that is installed on this machine to the latest published version. Skills from other sources
+(plugins, other repos, hand-written skills) are never touched — the installer only considers
+folders whose name matches a skill in this repo. Installs **nothing new** — only refreshes
+what is already there. A `config.json` inside a skill folder is preserved.
 
 ## How to run
 

@@ -32,7 +32,7 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 | **nav2009-db-maintenance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth by default (or `-SqlCredential`, prompted). `db_backupoperator`/`db_owner` (backup), ALTER (index), `db_owner`/`sysadmin` (CHECKDB). Defaults to a dry run. |
 | **nav2009-permissions-security** | — (knowledge-only) | — | — |
 | **nav2009-troubleshooting** | — (knowledge-only) | — | — |
-| **skills-update** | Node.js 18+ (for the npx path; warn-only) | — | — |
+| **ai-agent-skills-update** | Node.js 18+ (for the npx path; warn-only) | — | — |
 
 ## Repository layout
 
@@ -68,7 +68,7 @@ AI-Agent-skills/
 | **nav2009-db-maintenance** | **NAV 2009 SQL maintenance** (action side of the perf skill): backup, `DBCC CHECKDB`, rebuild/reorganize NAV-owned indexes, and update statistics — defaulting to a dry run that prints the exact T-SQL. Never creates/drops indexes (NAV owns them). | PowerShell 7+ (auto-installed), SQL maintenance permissions. |
 | **nav2009-permissions-security** | **NAV 2009 security & permissions**: Roles/permission sets, object permissions (incl. indirect), security filters, Windows vs Database logins, NAV↔SQL synchronization and Standard vs Enhanced models, and the license-vs-permission distinction. Knowledge-only. | None. |
 | **nav2009-troubleshooting** | **NAV 2009 triage runbook**: maps a reported symptom (RTC won't connect, Service Tier won't start, login/permission/license errors, posting/locking failures, NAS/Job Queue stopped, deployment/compile errors, crashes) to a likely cause and routes to the right NAV 2009 skill. Knowledge-only. | None. |
-| **skills-update** | **Update installed skills from this repo**: runs the installer in `--update` mode across all agents — refreshes every installed skill to the latest published version, installs nothing new, preserves local `config.json`. Triggers on "update my skills". | Node.js 18+ for the npx path (warned if missing; clone + `install.ps1`/`install.sh -Update` works without). |
+| **ai-agent-skills-update** | **Update skills installed from THIS repo** (and only this repo — other skills are never touched): runs the installer in `--update` mode across all agents, refreshes every installed repo skill to the latest published version, installs nothing new, preserves local `config.json`. Triggers on "update my AI-Agent-skills". | Node.js 18+ for the npx path (warned if missing; clone + `install.ps1`/`install.sh -Update` works without). |
 
 ## Install with `npx` (recommended)
 
@@ -89,7 +89,7 @@ Flags: `--agent claude|codex|opencode|all` (`all` = every agent in one run) · `
 # Update everything you have installed, across all agents, in one go:
 npx -y github:whobat/AI-Agent-skills --update --agent all --yes
 ```
-(The **skills-update** skill wraps exactly this — say "update my skills" to your agent.)
+(The **ai-agent-skills-update** skill wraps exactly this — say "update my AI-Agent-skills" to your agent. It only touches skills from this repo.)
 
 The installer copies skill folders into the agent's skills dir and **never copies real `config.json`** (only `config.example.json`). With `--auth` (or when prompted), it runs the skill's credential setup so your tokens are entered securely and saved locally — see [Configuration & secrets](#configuration--secrets). If a skill's credentials are **already configured** (its `configPath` file exists, e.g. `~/.7pace/config.json`), the installer detects it and asks whether to **update the tokens or keep them** (keep is the default) instead of prompting for setup from scratch.
 
