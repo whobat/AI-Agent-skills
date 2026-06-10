@@ -1,0 +1,2 @@
+# Shell scripts must keep LF — bash fails on CRLF (even on Windows/Git-Bash).
+*.sh text eol=lf
