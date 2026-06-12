@@ -70,6 +70,14 @@ BeforeAll {
 
 Describe 'install.ps1' {
 
+    It 'ignores skills nested deeper than the depth limit (parity with cli/sh)' {
+        $fx = New-Fixture
+        $deep = Join-Path $fx.Repo 'skills\a\b\deep-skill'
+        New-Item -ItemType Directory -Force $deep | Out-Null
+        Set-Content (Join-Path $deep 'SKILL.md') "---`nname: deep-skill`ndescription: x`nlicense: MIT`nmetadata:`n  version: `"1.0.0`"`n---`n"
+        (Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'deep-skill', '-Yes')).Code | Should -Not -Be 0
+    }
+
     It 'discovers skills nested under category folders and installs them FLAT' {
         $fx = New-Fixture
         $flat = Join-Path $fx.Repo 'skills\beta-skill'

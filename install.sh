@@ -184,13 +184,14 @@ PYEOF
 
 # Skills live under category subfolders (skills/<category>/<name>/SKILL.md). List each skill
 # folder by locating its SKILL.md; the install name is the folder's basename.
+# -maxdepth 3 matches bin/cli.js (skill folder at most 2 levels below skills/) — installer parity.
 skill_folders() {
-  find "$1" -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do dirname "$m"; done
+  find "$1" -maxdepth 3 -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do dirname "$m"; done
 }
 
 # Echo a skill name's repo folder (empty if not in this repo).
 resolve_skill_source() {  # $1=src  $2=name
-  find "$1" -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do
+  find "$1" -maxdepth 3 -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do
     d="$(dirname "$m")"
     if [ "$(basename "$d")" = "$2" ]; then echo "$d"; break; fi
   done
@@ -276,7 +277,7 @@ if [ "$SKILL" = "all" ]; then
   mapfile -t FOLDERS < <(skill_folders "$SRC")
 else
   one="$(resolve_skill_source "$SRC" "$SKILL")"
-  [ -n "$one" ] || { echo "Skill '$SKILL' findes ikke i $SRC" >&2; exit 1; }
+  [ -n "$one" ] || { echo "Skill '$SKILL' not found in $SRC" >&2; exit 1; }
   FOLDERS=("$one")
 fi
 

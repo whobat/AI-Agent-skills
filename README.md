@@ -148,7 +148,7 @@ If you've cloned the repo and prefer not to use Node:
 
 ## Manual install (per agent)
 
-A skill = the folder `skills/<name>/`. Copy (or symlink) that folder into the agent's skills directory. Install **all** skills by copying every folder, or **one** by copying just that folder.
+A skill = the folder `skills/<category>/<name>/`. Copy (or symlink) that folder into the agent's skills directory **as `<name>/`** (drop the category — agents want a flat skills dir). The `npx`/script installers do this flattening for you; the commands below are the manual equivalent.
 
 | Agent | Personal/global skills dir | Project-level |
 |-------|----------------------------|---------------|
@@ -160,20 +160,20 @@ A skill = the folder `skills/<name>/`. Copy (or symlink) that folder into the ag
 
 > **Tip — one copy, many agents:** `~/.agents/skills/` is read by Codex *and* OpenCode, and Claude Code reads `~/.claude/skills/`. Symlinking a skill into both covers most setups:
 > ```bash
-> ln -s "$PWD/skills/7pace-time-tracker" ~/.claude/skills/7pace-time-tracker
-> ln -s "$PWD/skills/7pace-time-tracker" ~/.agents/skills/7pace-time-tracker
+> ln -s "$PWD/skills/time-tracking/7pace-time-tracker" ~/.claude/skills/7pace-time-tracker
+> ln -s "$PWD/skills/time-tracking/7pace-time-tracker" ~/.agents/skills/7pace-time-tracker
 > ```
 
-**Examples (manual copy):**
+**Examples (manual copy)** — note the `skills/*/*` glob, which flattens the category folders:
 ```bash
-# Claude Code — all skills
-cp -r skills/* ~/.claude/skills/
-# Codex — single skill
-cp -r skills/7pace-time-tracker ~/.agents/skills/
+# Claude Code — all skills (flattened from their category folders)
+cp -r skills/*/* ~/.claude/skills/
+# Codex — single skill (drop the category in the destination)
+cp -r skills/time-tracking/7pace-time-tracker ~/.agents/skills/7pace-time-tracker
 ```
 ```powershell
 # Claude Code — all skills (PowerShell)
-Copy-Item skills/* "$HOME/.claude/skills/" -Recurse
+Copy-Item skills/*/* "$HOME/.claude/skills/" -Recurse
 ```
 
 ### "Pi" / other agents

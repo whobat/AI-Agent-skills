@@ -90,6 +90,13 @@ check "exit code 0" '[ "$RC" -eq 0 ]'
 check "installed flat" '[ -f "$AGENT_DIR/beta-skill/SKILL.md" ]'
 check "no category folder in agent dir" '[ ! -d "$AGENT_DIR/tools" ]'
 
+echo "- ignores skills nested deeper than the depth limit (parity with cli/ps1)"
+new_fixture
+mkdir -p "$REPO/skills/a/b/deep-skill"
+frontmatter deep-skill 1.0.0 > "$REPO/skills/a/b/deep-skill/SKILL.md"
+run_installer --agent claude --skill deep-skill --yes
+check "deep skill not discovered (exits non-zero)" '[ "$RC" -ne 0 ]'
+
 echo "- reinstalling over an older version shows the transition"
 new_fixture
 mkdir -p "$AGENT_DIR/beta-skill"

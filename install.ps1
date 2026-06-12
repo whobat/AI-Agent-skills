@@ -183,7 +183,8 @@ function Resolve-Requirements($manifestPath) {
 # Skills live under category subfolders (skills/<category>/<name>/SKILL.md). Find each skill
 # folder by locating its SKILL.md; the install name is the folder's basename.
 function Get-SkillFolders($skillsSrc) {
-  Get-ChildItem -Path $skillsSrc -Recurse -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue |
+  # -Depth 2 matches bin/cli.js (skill folder at most 2 levels below skills/) — installer parity.
+  Get-ChildItem -Path $skillsSrc -Recurse -Depth 2 -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue |
     ForEach-Object { Get-Item $_.Directory.FullName }
 }
 
@@ -260,7 +261,7 @@ if ($Skill -eq 'all') {
   $folders = @(Get-SkillFolders $skillsSrc)
 } else {
   $one = Resolve-SkillSource $skillsSrc $Skill
-  if (-not $one) { throw "Skill '$Skill' findes ikke i $skillsSrc" }
+  if (-not $one) { throw "Skill '$Skill' not found in $skillsSrc" }
   $folders = @(Get-Item $one)
 }
 
