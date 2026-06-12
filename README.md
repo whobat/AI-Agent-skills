@@ -26,6 +26,7 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 
 | Skill | Runtime | Python packages | Credentials |
 |-------|---------|-----------------|-------------|
+| **branded-report** | Python 3.8+ | `markdown`, `python-docx`, `beautifulsoup4` (installed automatically) | A local `theme.json` (brand colors/fonts/logo). PDF additionally needs a headless Chrome/Edge/Chromium (warn-only). |
 | **7pace-time-tracker** | Python 3.8+ | `requests` (installed automatically) | `config.json` with a 7pace **Bearer token** (worklog CRUD) + optional Azure DevOps **PAT** (work-item search). See [Configuration & secrets](#configuration--secrets). |
 | **win-eventlog-triage** | PowerShell 7+ (auto-installed) | — | A tier-admin credential, **prompted each run** and never stored. WinRM must be enabled on the target servers. |
 | **nav2009-development** | — (knowledge-only) | — | — |
@@ -65,6 +66,7 @@ AI-Agent-skills/
 
 | Skill | What it does | Extra setup |
 |-------|--------------|-------------|
+| **branded-report** | **Standardized branded documents**: turns a Markdown report into **HTML + PDF + DOCX** from one source and one theme, so every report looks identical. The theme (brand colors/fonts/logo) can be auto-extracted from a PowerPoint/Office template. | Python 3.8+, `pip install markdown python-docx beautifulsoup4`, a local `theme.json`; PDF needs a headless browser. |
 | **7pace-time-tracker** | **7pace Timetracker** (Azure DevOps): create/edit/delete time entries via REST API, plus free-text work-item search. | Python 3.8+, `pip install requests`, and a `config.json` (see [Configuration & secrets](#configuration--secrets)). |
 | **win-eventlog-triage** | **Windows Event Log triage**: pulls Critical/Error events from one or many servers in parallel over WinRM, groups them, and returns JSON the agent turns into a critical-first summary. | PowerShell 7+ (auto-installed by the installer), WinRM on the targets, and a tier-admin credential (prompted each run — nothing stored). |
 | **nav2009-development** | **Dynamics NAV 2009 / C/AL development**: coding patterns, key/SIFT design, review checklist, customization architecture, reports, integrations, and BC-upgrade posture. Knowledge-only (no scripts). | None. |
