@@ -1,22 +1,13 @@
 {
   "requirements": [
     {
-      "name": "PowerShell 7",
-      "detect": "pwsh",
-      "minVersion": "7.0",
-      "wingetId": "Microsoft.PowerShell",
-      "brewCask": "powershell",
-      "githubRepo": "PowerShell/PowerShell",
-      "url": "https://github.com/PowerShell/PowerShell/releases/latest"
-    },
-    {
       "name": "NAV 2009 Classic client (finsql.exe)",
       "detectPaths": [
         "C:\\Program Files (x86)\\Microsoft Dynamics NAV\\60\\Classic\\finsql.exe",
         "C:\\Program Files\\Microsoft Dynamics NAV\\60\\Classic\\finsql.exe"
       ],
       "warnOnly": true,
-      "help": "Ships with the Microsoft Dynamics NAV 2009 Classic client / Development Environment and cannot be auto-installed. Install the NAV 2009 Classic client on this machine, or pass -FinSqlPath to the skill's script if finsql.exe lives elsewhere.",
+      "help": "The manual Object Designer procedures require the NAV 2009 Classic client on the machine doing the work. It ships with the NAV 2009 installation media and cannot be auto-installed.",
       "url": "https://learn.microsoft.com/en-us/previous-versions/dynamicsnav-2009/"
     }
   ]

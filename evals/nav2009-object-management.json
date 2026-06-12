@@ -1,29 +1,29 @@
 [
   {
     "skills": ["nav2009-object-management"],
-    "query": "Export all codeunits in the 50000-50099 range from the DEV database on SQLSRV01 to a text file.",
+    "query": "Export tables 32, 50022 and 50026 from our NAV 2009 database to a text file.",
     "expected_behavior": [
-      "Runs Invoke-NavObjects.ps1 with -Command Export, a Type=Codeunit;ID=50000..50099 filter, and a .txt path",
-      "Performs the dry run first and shows the exact finsql arguments before passing -Execute",
-      "Notes that .txt export requires a developer license"
+      "Does NOT construct a finsql.exe command line (no CLI exists on NAV 2009) - guides the manual Object Designer export instead",
+      "Provides the exact ID filter string (32|50022|50026) and the File -> Export steps, noting .txt requires a developer license",
+      "Offers the read-only SQL query against dbo.[Object] to confirm which versions were exported"
     ]
   },
   {
     "skills": ["nav2009-object-management"],
-    "query": "Import this objects.fob into the production NAV database.",
+    "query": "Import this objects.fob into the production NAV 2009 database.",
     "expected_behavior": [
-      "Treats production import as high-stakes: reviews the dry run and confirms before -Execute",
-      "Knows .fob import works with an end-user license (unlike .txt)",
-      "Derives success from navcommandresult/naverrorlog rather than the unreliable finsql exit code"
+      "Treats it as high-stakes: backup first, review the Import Worksheet row by row, never blanket-Replace conflicts",
+      "Warns that table schema changes need exclusive access and trigger synchronization",
+      "Verifies afterwards via the Object-table SQL query (Date/Time changed, Compiled = 1, expected Version List)"
     ]
   },
   {
     "skills": ["nav2009-object-management"],
-    "query": "finsql.exe isn't on this machine - can I still deploy objects?",
+    "query": "Can we automate nightly object exports from NAV 2009 with finsql.exe command=exportobjects?",
     "expected_behavior": [
-      "Explains finsql.exe ships with the NAV 2009 Classic client and cannot be auto-installed",
-      "Offers -FinSqlPath for a non-standard location, or running the skill on a machine with the Classic client",
-      "Does not silently fall back to writing raw SQL against NAV object tables"
+      "States clearly that command= was introduced in NAV 2013 and fails on 2009 with 'The program property command is unknown'",
+      "Lists the honest options: manual runbook, third-party object tools, or upgrading the dev environment to NAV 2013+",
+      "Advises against fragile Classic-client UI automation rather than recommending it"
     ]
   }
 ]
