@@ -15,6 +15,7 @@
     "mono": "Consolas, monospace"
   },
   "logo": null,
+  "logo_raster": null,
   "_help": {
     "colors.primary": "Main brand colour — heading band, cover title, links",
     "colors.secondary": "Subtitle, table header row, h3 headings",
@@ -24,7 +25,9 @@
     "colors.muted": "Bold text and cover metadata",
     "colors.text": "Body text",
     "fonts": "CSS font stacks; the first family is also used for DOCX",
-    "logo": "Path to an SVG/PNG/JPG (relative to this file). SVG/PNG/JPG embed in HTML/PDF; only PNG/JPG embed in DOCX.",
+    "logo": "Logo for HTML/PDF — SVG/PNG/JPG, relative to this file (e.g. 'assets/logo.svg' or '.\\\\assets\\\\logo.svg'). SVG stays crisp at any size.",
+    "logo_raster": "Optional PNG/JPG logo for DOCX (Word cannot embed SVG). If omitted, DOCX uses 'logo' when it is a PNG/JPG, else the organization name as a text wordmark.",
+    "assets": "Relative paths resolve against THIS theme file's folder — keep theme.json and an assets/ folder together and reference 'assets/...'.",
     "generate": "Run extract_theme.py against a .pptx/.potx to fill this in from a real brand template."
   }
 }

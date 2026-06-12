@@ -204,16 +204,24 @@ class DocxBuilder:
 
     # ---- cover -----------------------------------------------------------
     def cover(self, theme, theme_path, title, subtitle, meta_lines):
-        logo = theme.get("logo")
-        if logo:
-            p = Path(logo)
+        # Word cannot embed SVG: use logo_raster (PNG/JPG) if given, else logo when it is a raster.
+        def _resolve(val):
+            if not val:
+                return None
+            p = Path(str(val).replace("\\", "/"))
             if not p.is_absolute() and theme_path:
-                p = (Path(theme_path).parent / logo).resolve()
-            if p.exists() and p.suffix.lower() in (".png", ".jpg", ".jpeg"):
-                try:
-                    self.doc.add_picture(str(p), width=Mm(55))
-                except Exception:  # noqa: BLE001
-                    pass
+                p = (Path(theme_path).parent / str(val).replace("\\", "/")).resolve()
+            return p if p.exists() else None
+        raster = _resolve(theme.get("logo_raster"))
+        if raster is None:
+            cand = _resolve(theme.get("logo"))
+            if cand is not None and cand.suffix.lower() in (".png", ".jpg", ".jpeg"):
+                raster = cand
+        if raster is not None:
+            try:
+                self.doc.add_picture(str(raster), width=Mm(55))
+            except Exception:  # noqa: BLE001
+                pass
         org = theme.get("organization")
         if org:
             op = self.doc.add_paragraph()
