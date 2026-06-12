@@ -1,108 +1,64 @@
 ---
 name: nav2009-object-management
-description: Import, export, and compile Microsoft Dynamics NAV 2009 C/AL objects via the Classic development environment CLI (finsql.exe). The bundled script wraps finsql.exe command-line operations to move objects between databases or between a file and a database — supporting both binary .fob files and text-format .txt files — and emits structured JSON so the agent can report results and errors clearly. Use when the user wants to export all codeunits in the 50000 range, import this .fob into NAV, compile all modified objects, deploy objects between two NAV databases, export a specific table or report to .txt, or migrate customisations from a development database to production. A developer license is required for .txt export/import and for compiling; .fob import works with an end-user license. Requires PowerShell 7+ and a NAV 2009 install (finsql.exe) with an appropriate license.
+description: Guide export, import, and compilation of Microsoft Dynamics NAV 2009 C/AL objects (.fob/.txt) through the Classic client's Object Designer — and verify the result via a read-only SQL query against the Object table. IMPORTANT REALITY CHECK this skill enforces - NAV 2009 has NO command-line interface for objects; finsql.exe "command=exportobjects" was introduced in NAV 2013 and fails on 2009 with "The program property 'command' is unknown" - never attempt it. Use when the user wants to export tables/codeunits/reports to .txt or .fob, import a .fob/.txt into a NAV 2009 database, compile objects, move customizations between NAV 2009 databases, or automate NAV 2009 object deployment (the answer is: manual Object Designer steps + SQL verification). A developer license is required for .txt export/import and compiling; .fob import works with an end-user license.
 license: MIT
-compatibility: Requires PowerShell 7+ and a Microsoft Dynamics NAV 2009 Classic client install (finsql.exe) with an appropriate license
+compatibility: Requires the Microsoft Dynamics NAV 2009 Classic client (with an appropriate license) on the machine where the manual steps are performed; SQL Server access for the verification query
 metadata:
-  version: "1.0.3"
+  version: "2.0.0"
 ---
 
 # NAV 2009 Object Management
 
-> Targets **Microsoft Dynamics NAV 2009 Classic development environment (finsql.exe)**. The bundled
-> script `scripts/Invoke-NavObjects.ps1` drives finsql.exe and emits JSON; **the agent (you) writes
-> the narrative.** Import and compile **MUTATE the database** — the script defaults to a dry run
-> (`-WhatIf` behaviour without `-Execute`) and only contacts finsql.exe when you pass `-Execute`.
-> The script never calls an LLM.
+> **There is no CLI.** `finsql.exe command=exportobjects/importobjects/compileobjects`
+> arrived in **NAV 2013** — on NAV 2009 it fails with *"The program property 'command' is
+> unknown."* Do **not** construct finsql command lines, and correct the user if they ask
+> for one. On NAV 2009, object work is **manual in the Object Designer**; your job is to
+> guide it precisely and to **verify the outcome via SQL** (which IS scriptable).
 
-`SCRIPT` = this skill's `scripts/Invoke-NavObjects.ps1`. Requires **PowerShell 7+** (`pwsh`) and
-**finsql.exe** installed on the machine (shipped with the NAV 2009 Classic client / development
-environment).
+Full procedures, filter syntax, Import Worksheet rules, and the license matrix are in
+[REFERENCE.md](REFERENCE.md).
 
-## Permissions & licensing
+## What you (the agent) do
 
-- **Developer license** required for: exporting objects to **.txt**, importing **.txt**, and
-  compiling objects. Without it finsql.exe will exit with a license error.
-- **.fob import** works with an end-user license (the binary format bypasses the C/AL text licence
-  check).
-- Export and import both need **read/write DB access** to the target database.
-- **Windows auth** is the default (NAV 2009 classic). Pass `-SqlCredential` for SQL auth — the
-  credential object keeps the password out of the command line; never paste a raw password.
+1. **Prepare**: turn the user's request into exact Object Designer inputs — object type,
+   an ID filter string (e.g. `32|50022|50026` or `50000..50099`), and the target file
+   name/format. State the license requirement up front (.txt/compile = developer license;
+   .fob import = end-user license is enough).
+2. **Guide the manual steps** (concise, numbered — the user is in the Classic client):
+   - **Export**: Tools → Object Designer (Shift+F12) → pick the object type → filter the
+     ID column (F7) → select rows → File → Export → choose `.txt` or `.fob`.
+   - **Import .fob**: File → Import → review the **Import Worksheet** (it shows
+     new/changed/conflict per object — never blind-accept "Replace All" on conflicts).
+   - **Import .txt**: File → Import — **overwrites without compiling**; objects MUST be
+     compiled afterwards (mark → F11), and .txt import skips the worksheet entirely.
+   - **Compile**: mark the objects → F11 (or Tools → Compile); fix errors one at a time.
+3. **Verify via SQL** (read-only; this is the scriptable part). The `Object` table holds
+   per-object `Type, ID, Name, Compiled, Date, Time, [Version List]`:
 
-## How to run
+   ```sql
+   SELECT [Type], [ID], [Name], [Compiled], [Date], [Time], [Version List]
+   FROM dbo.[Object]
+   WHERE [Type] = 1 AND [ID] IN (32, 50022, 50026)   -- Type: 1=Table 3=Report 5=Codeunit 7=XMLport ...
+   ```
 
-Always run with `pwsh`. Parse the JSON it prints on stdout (or the compact summary when `-OutFile`
-is set).
+   After an import/compile, confirm `Date`/`Time` changed, `Compiled = 1`, and the
+   `Version List` carries the expected tag. After an export, this confirms what versions
+   were exported. Report discrepancies loudly.
+4. **For "can we automate this?"**: answer honestly — not on NAV 2009. The supported
+   options are: do it manually (this runbook), use a third-party object tool the
+   organization may own, or upgrade the development environment (NAV 2013+ added the CLI).
+   UI automation of the Classic client is fragile and a last resort — say so rather than
+   recommending it.
 
-| Want | Pass |
-|------|------|
-| Export objects to .txt by filter | `-Command Export -ServerName SQLSRV01 -Database NAV_PROD -Path C:\obj\out.txt -Filter 'Type=Codeunit;ID=50000..50099'` |
-| Export to .fob (binary) | `-Command Export -Path C:\obj\out.fob -Filter 'Type=Table;ID=50000..50199'` |
-| Import a .fob | `-Command Import -Path C:\obj\patch.fob` |
-| Import a .txt (needs dev license) | `-Command Import -Path C:\obj\codeunits.txt` |
-| Compile by filter | `-Command Compile -Filter 'Type=Codeunit;ID=50000..50099'` |
-| Compile with schema sync | `-Command Compile -SyncSchema Force` |
-| Point at a specific finsql.exe | `-FinSqlPath 'D:\NAV\Classic\finsql.exe'` |
-| SQL auth | `-SqlCredential (Get-Credential)` |
-| Actually execute (drop dry-run) | add `-Execute` |
+## Production imports
 
-**Examples:**
-```powershell
-# Dry-run: see the exact finsql command before touching the database
-pwsh -File SCRIPT -Command Export -ServerName SQLSRV01 -Database NAV_PROD `
-    -Path C:\deploy\cu50000.txt -Filter 'Type=Codeunit;ID=50000..50099'
+Treat any import into a production database as high-stakes: require a backup first
+(`nav2009-db-maintenance`), prefer .fob with a reviewed Import Worksheet, plan the
+post-import compile, and schedule when Classic users are out — table-schema changes
+require exclusive access and trigger a synchronization prompt (see REFERENCE).
 
-# Execute the export (add -Execute after confirming the dry-run output)
-pwsh -File SCRIPT -Command Export -ServerName SQLSRV01 -Database NAV_PROD `
-    -Path C:\deploy\cu50000.txt -Filter 'Type=Codeunit;ID=50000..50099' -Execute
+## Related skills
 
-# Import a .fob and compile all modified objects (two separate calls)
-pwsh -File SCRIPT -Command Import -ServerName SQLSRV01 -Database NAV_PROD `
-    -Path C:\deploy\patch.fob -ImportAction Overwrite -Execute
-pwsh -File SCRIPT -Command Compile -ServerName SQLSRV01 -Database NAV_PROD `
-    -Filter 'Type=Codeunit;ID=50000..50099' -Execute
-```
-
-## Output contract
-
-- **Without `-OutFile`** → full JSON on stdout.
-- **With `-OutFile`** → full JSON to the file; a **compact** summary on stdout (mirror of
-  nav2009-sql-performance). Prefer `-OutFile` for compile runs so your context stays small.
-
-Top level keys:
-
-| Key | Type | Notes |
-|-----|------|-------|
-| `status` | `ok` / `error` | Derived from navcommandresult.txt / naverrorlog.txt |
-| `generated_at` | string (UTC ISO 8601) | When the JSON was produced |
-| `command` | string | `Export`, `Import`, or `Compile` |
-| `executed` | bool | `false` in dry-run; `true` when finsql.exe was actually launched |
-| `finsql` | string | Resolved absolute path to finsql.exe (or `null` if not found) |
-| `arguments` | string | Full finsql argument string; **password replaced with `***`** |
-| `result` | object | `command_result` (navcommandresult.txt contents), `error_log` (naverrorlog.txt contents or null) |
-
-## What you (the agent) do with the result
-
-1. **Run in dry-run first** (no `-Execute`). Show the user the resolved finsql path and the exact
-   argument string before anything touches the database.
-2. **Re-run with `-Execute` only after confirmation** — especially for Import and Compile, which
-   modify live database objects.
-3. **ALWAYS read `navcommandresult.txt` / `naverrorlog.txt` via `result`** because finsql.exe's
-   process exit code is unreliable; a successful exit code does not mean the operation succeeded.
-4. For compile failures: surface the individual object errors from `result.error_log` and point to
-   the **nav2009-development** skill for the C/AL fix.
-5. Remind the user that **compiling with `-SyncSchema Force`** can lock and alter SQL tables.
-   Confirm scope (which tables are affected) before running it in production during business hours.
-
-## Errors
-
-- **finsql.exe not found**: auto-detect probes
-  `C:\Program Files (x86)\Microsoft Dynamics NAV\60\Classic\finsql.exe` and
-  `C:\Program Files\Microsoft Dynamics NAV\60\Classic\finsql.exe`. Use `-FinSqlPath` to
-  override if installed elsewhere.
-- **License error** (`You do not have permission...`): ensure a developer license is loaded in the
-  NAV client tools for .txt operations and compile; for .fob import the end-user license suffices.
-- **Object is locked / being edited**: another session has the object open in C/SIDE Object Designer.
-  Close the session or wait, then retry.
-- **Schema sync conflicts**: compile with `-SyncSchema Force` can fail when table-structure changes
-  conflict with live data. Run against a test database first; review `naverrorlog.txt` carefully.
+- **nav2009-development** — what the objects should contain (review, version tags).
+- **nav2009-db-maintenance** — the pre-import backup.
+- **nav2009-troubleshooting** — post-import errors (compile failures, schema sync).
