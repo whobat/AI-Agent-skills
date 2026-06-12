@@ -72,6 +72,32 @@ Describe 'Resolve-Logs' {
   }
 }
 
+Describe 'Remote scriptblock down-level compatibility' {
+  # The scriptblock passed to Invoke-Command runs ON THE TARGET, whose Windows
+  # PowerShell can be as old as 2.0-4.0 (Server 2008/2012). It must avoid PS 5.0+
+  # syntax. Regression guard for the field bug where ::new() failed on a
+  # Server 2012 R2 box running PS 4.0.
+  BeforeAll {
+    $script:Source = Get-Content (Join-Path $PSScriptRoot 'Invoke-EventLogTriage.ps1') -Raw
+    # Extract the $remote = { ... } scriptblock body.
+    $m = [regex]::Match($script:Source, '(?s)\$remote\s*=\s*\{(.*?)\n  \}')
+    $script:RemoteBlock = $m.Groups[1].Value
+  }
+
+  It 'extracted the remote scriptblock' {
+    $script:RemoteBlock | Should -Not -BeNullOrEmpty
+    $script:RemoteBlock | Should -Match 'Get-WinEvent'
+  }
+
+  It 'uses no ::new() constructor syntax (PS 5.0+) in the remote block' {
+    $script:RemoteBlock | Should -Not -Match '::new\('
+  }
+
+  It 'builds its list with New-Object (down-level safe)' {
+    $script:RemoteBlock | Should -Match 'New-Object System\.Collections\.Generic\.List'
+  }
+}
+
 Describe 'Resolve-TimeWindow' {
   BeforeAll { $now = [datetime]'2026-06-08T12:00:00' }
 
