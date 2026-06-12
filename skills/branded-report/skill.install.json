@@ -1,6 +1,6 @@
 {
   "requires": ["Python 3.8+"],
-  "pipPackages": ["markdown", "python-docx", "beautifulsoup4"],
+  "pipPackages": ["markdown", "python-docx", "beautifulsoup4", "pillow", "pypdfium2", "pypdf"],
   "requirements": [
     {
       "name": "Headless browser (Chrome/Edge/Chromium) for PDF",

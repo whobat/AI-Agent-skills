@@ -78,7 +78,43 @@ It copies the smallest few SVGs and rasters from the template's media into `--lo
 the result** — pick the logo variant you want, and remember DOCX needs PNG/JPG. The
 `organization` defaults to the template filename; edit it to taste.
 
-Works with `.pptx`, `.potx`, `.thmx`, `.dotx`, `.docx` — anything carrying an OOXML theme.
+Works with `.pptx`, `.potx`, `.thmx`, `.dotx`, **`.docx`, `.xlsx`** — anything carrying an
+OOXML theme (`*/theme/themeN.xml`). This is the **most accurate** source because it reads
+the brand's declared color scheme and fonts, not an approximation.
+
+## extract_theme_visual.py — image / website / PDF
+
+When there is no Office theme, sample the colors visually:
+
+```bash
+python extract_theme_visual.py --image brand.png   --out theme.json
+python extract_theme_visual.py --url https://acme.example --out theme.json --logo-dir ./assets
+python extract_theme_visual.py --pdf branded.pdf --page 1 --out theme.json
+```
+
+How each source is handled:
+
+| Source | Colors | Fonts | Logo / Organization |
+|--------|--------|-------|---------------------|
+| `--image` | sampled from the pixels | default (Georgia) | — / filename |
+| `--pdf` | rendered page (pypdfium2) → sampled | embedded font names (pypdf) | — / filename |
+| `--url` | **header band** screenshot (headless browser) → sampled | `font-family` in the page CSS | og:image / favicon; `<title>` → organization |
+
+**The colour heuristic** keeps only saturated, mid/dark palette entries and weights
+saturation far above pixel share — so a small vivid logo wins over a mostly-white page.
+`primary` is the most vivid prominent colour; `secondary` is the next distinct hue;
+`accent`/`light`/`border`/`muted` are derived from `primary`; `text` is `#2B2B2B`. A
+greyscale source falls back to a neutral slate palette.
+
+**Reliability (read this):** visual extraction is an **approximation — always review the
+result.**
+- A **PDF or image of an already-branded document** (a report, a one-pager, a logo sheet)
+  gives accurate brand colours — this is the best visual source.
+- A **website** reflects what is *on screen*: the header band usually carries the brand
+  chrome, but a photo-heavy site can still yield content colours rather than the brand's.
+  A site's live palette may also differ from its print/PowerPoint identity. Treat the
+  output as a starting point and tune `colors` (and `logo`) by hand.
+- For guaranteed-correct colours, prefer the **OOXML extractor** or hand-write the theme.
 
 ## Markdown support
 

@@ -1,10 +1,10 @@
 ---
 name: branded-report
-description: Turn a Markdown report into a polished, consistently branded document in HTML, PDF, and DOCX — all three from one source and one theme, so every report looks identical. The theme (brand colors, fonts, logo, organization name) comes from a JSON file that can be auto-extracted from a PowerPoint/Office template (.pptx/.potx/.thmx) so the output matches the corporate identity. Use when the user wants a standardized, branded, or "nicely formatted" report/document, wants the same report as PDF and/or Word and/or HTML, asks for a company-templated report, or wants output that matches a PowerPoint design/color theme. Requires Python 3.8+ (markdown, python-docx, beautifulsoup4); PDF additionally needs a headless Chrome/Edge/Chromium.
+description: Turn a Markdown report into a polished, consistently branded document in HTML, PDF, and DOCX — all three from one source and one theme, so every report looks identical. The theme (brand colors, fonts, logo, organization name) can be auto-extracted from a PowerPoint/Office template (.pptx/.potx/.thmx/.docx/.xlsx), or — when there is no Office file — sampled from an image, a website URL, or a PDF, so the output matches the corporate identity. Use when the user wants a standardized, branded, or "nicely formatted" report/document, wants the same report as PDF and/or Word and/or HTML, asks for a company-templated report, wants output that matches a PowerPoint/website/PDF design or color theme, or wants to derive brand colors and a logo from a template, image, web page, or PDF. Requires Python 3.8+ (markdown, python-docx, beautifulsoup4; pillow/pypdfium2/pypdf for image/PDF theme extraction); PDF output additionally needs a headless Chrome/Edge/Chromium.
 license: MIT
 compatibility: Requires Python 3.8+ with markdown, python-docx and beautifulsoup4; PDF output additionally needs a headless Chrome/Edge/Chromium browser on the machine
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Branded Report
@@ -19,14 +19,23 @@ metadata:
 
 ## The theme (do this once per brand)
 
-The look is driven by a small `theme.json` (colors, fonts, logo, organization). Either:
-- **Extract it from a brand template** (recommended) — keeps it on-brand automatically:
+The look is driven by a small `theme.json` (colors, fonts, logo, organization). Get one by:
+- **From an Office template** (most accurate) — reads the real color scheme + fonts:
   ```bash
   python EXTRACT --template "Brand.pptx" --out theme.json --logo-dir ./assets
   ```
-  This reads the Office theme (color scheme + fonts) and copies the logo candidates out.
-  Then open `theme.json` and pick the right `logo` (a dark/colored logo for white pages;
-  for **DOCX the logo must be PNG/JPG** — SVG embeds only in HTML/PDF).
+  Works with **`.pptx`, `.potx`, `.thmx`, `.dotx`, `.docx`, `.xlsx`** — anything carrying an
+  OOXML theme. Then open `theme.json` and pick the right `logo` (a dark/colored logo for
+  white pages; **DOCX needs a PNG/JPG** logo via `logo_raster` — SVG embeds only in HTML/PDF).
+- **From an image, a website, or a PDF** (when there is no Office theme) — `extract_theme_visual.py`
+  renders the source and samples its brand colors (heuristic; review the result):
+  ```bash
+  python VISUAL --image brand.png  --out theme.json
+  python VISUAL --url https://acme.example --out theme.json --logo-dir ./assets   # + logo + org + fonts
+  python VISUAL --pdf branded.pdf --page 1 --out theme.json
+  ```
+  A PDF or image of an already-branded document gives accurate colors; a website yields its
+  on-screen palette + logo to tune. See [REFERENCE.md](REFERENCE.md) for the reliability notes.
 - **Or hand-write it** from [theme.example.json](theme.example.json).
 
 > The theme file is **organization-specific** — keep it local (alongside the user's
