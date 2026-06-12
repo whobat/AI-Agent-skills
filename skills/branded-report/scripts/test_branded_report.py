@@ -106,6 +106,47 @@ class TestDocx(unittest.TestCase):
         self.assertEqual(str(h1.runs[0].font.color.rgb), "FFFFFF")
 
 
+class TestLogoResolution(unittest.TestCase):
+    PNG_1x1 = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c6360000002000001e221bc330000000049454e44ae426082")
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+        (self.tmp / "assets").mkdir()
+        (self.tmp / "assets" / "logo.svg").write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"/>', encoding="utf-8")
+        (self.tmp / "assets" / "logo.png").write_bytes(self.PNG_1x1)
+        self.theme_path = str(self.tmp / "theme.json")
+
+    def test_relative_asset_resolves_against_theme_folder(self):
+        # forward-slash relative path
+        theme = {"logo": "assets/logo.png"}
+        Path(self.theme_path).write_text(json.dumps(theme), encoding="utf-8")
+        data_uri, raster = br.resolve_logo(theme, self.theme_path)
+        self.assertTrue(data_uri.startswith("data:image/png;base64,"))
+        self.assertTrue(raster.endswith("logo.png"))
+
+    def test_backslash_path_is_normalized(self):
+        theme = {"logo": ".\\assets\\logo.png"}
+        _, raster = br.resolve_logo(theme, self.theme_path)
+        self.assertIsNotNone(raster)
+        self.assertTrue(raster.endswith("logo.png"))
+
+    def test_svg_logo_with_png_logo_raster_for_docx(self):
+        # HTML/PDF get the crisp SVG; DOCX gets the PNG raster.
+        theme = {"logo": "assets/logo.svg", "logo_raster": "assets/logo.png"}
+        data_uri, raster = br.resolve_logo(theme, self.theme_path)
+        self.assertTrue(data_uri.startswith("data:image/svg+xml;base64,"))
+        self.assertTrue(raster.endswith("logo.png"))
+
+    def test_svg_only_gives_no_docx_raster(self):
+        theme = {"logo": "assets/logo.svg"}
+        data_uri, raster = br.resolve_logo(theme, self.theme_path)
+        self.assertTrue(data_uri.startswith("data:image/svg+xml"))
+        self.assertIsNone(raster)
+
+
 class TestExtractTheme(unittest.TestCase):
     def _make_pptx(self, path):
         theme_xml = (

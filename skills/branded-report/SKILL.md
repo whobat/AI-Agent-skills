@@ -4,7 +4,7 @@ description: Turn a Markdown report into a polished, consistently branded docume
 license: MIT
 compatibility: Requires Python 3.8+ with markdown, python-docx and beautifulsoup4; PDF output additionally needs a headless Chrome/Edge/Chromium browser on the machine
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Branded Report

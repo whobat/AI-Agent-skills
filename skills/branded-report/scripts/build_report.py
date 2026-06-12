@@ -52,22 +52,37 @@ def load_theme(path):
     return theme
 
 
-def resolve_logo(theme, theme_path):
-    """Return (data_uri_or_None, raster_path_or_None) for HTML and DOCX respectively."""
-    logo = theme.get("logo")
-    if not logo:
-        return None, None
-    p = Path(logo)
+def resolve_asset(value, theme_path):
+    """Resolve a theme asset path (e.g. 'assets/logo.png' or '.\\assets\\logo.png') to an
+    absolute Path, relative to the theme file's folder. Backslashes are normalized so the
+    same theme.json works on Windows and POSIX. Returns None if missing/absent."""
+    if not value:
+        return None
+    norm = str(value).replace("\\", "/")
+    p = Path(norm)
     if not p.is_absolute() and theme_path:
-        p = (Path(theme_path).parent / logo).resolve()
+        p = (Path(theme_path).parent / norm).resolve()
     if not p.exists():
-        print(f"  ! logo not found: {p}", file=sys.stderr)
-        return None, None
-    ext = p.suffix.lower()
-    mime = {".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg"}.get(ext, "application/octet-stream")
-    data_uri = f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode("ascii")
-    raster = str(p) if ext in (".png", ".jpg", ".jpeg") else None
+        print(f"  ! asset not found: {p}", file=sys.stderr)
+        return None
+    return p
+
+
+def resolve_logo(theme, theme_path):
+    """Return (data_uri_or_None, raster_path_or_None) for HTML/PDF and DOCX respectively.
+    HTML/PDF use `logo` (SVG/PNG/JPG, base64-embedded). DOCX needs a raster: it uses
+    `logo_raster` (PNG/JPG) when present, else `logo` if that is itself a PNG/JPG."""
+    p = resolve_asset(theme.get("logo"), theme_path)
+    data_uri = None
+    if p is not None:
+        mime = {".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg"}.get(p.suffix.lower(), "application/octet-stream")
+        data_uri = f"data:{mime};base64," + base64.b64encode(p.read_bytes()).decode("ascii")
+
+    raster_p = resolve_asset(theme.get("logo_raster"), theme_path)
+    if raster_p is None and p is not None and p.suffix.lower() in (".png", ".jpg", ".jpeg"):
+        raster_p = p
+    raster = str(raster_p) if raster_p is not None and raster_p.suffix.lower() in (".png", ".jpg", ".jpeg") else None
     return data_uri, raster
 
 

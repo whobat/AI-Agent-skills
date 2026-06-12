@@ -31,19 +31,28 @@ theme format. For the agent-facing workflow see [SKILL.md](SKILL.md).
     "body":    "Georgia, serif",
     "mono":    "Consolas, monospace"
   },
-  "logo": "assets/logo.svg"          // relative to the theme file; SVG/PNG/JPG
+  "logo": "assets/logo.svg",         // HTML/PDF logo; SVG/PNG/JPG
+  "logo_raster": "assets/logo.png"   // optional PNG/JPG logo for DOCX
 }
 ```
 
 All keys are optional — missing ones fall back to the neutral default theme. Any single
 color or font can be overridden without supplying the rest.
 
+### Asset paths
+Relative paths in the theme (`logo`, `logo_raster`) resolve against **the theme file's own
+folder**, and backslashes are normalized — so the same theme works on Windows and POSIX.
+Keep a `theme.json` and an `assets/` folder together and reference `assets/logo.png` (or
+`.\assets\logo.png`). The folder can live anywhere, including inside an agent's skills
+directory (a folder without a `SKILL.md` is ignored by the installer and the updater).
+
 ### Logo rules
-- **HTML / PDF:** SVG, PNG, or JPG all embed (base64). A colored/dark logo reads best on
-  the white cover.
-- **DOCX:** Word cannot embed SVG. If `logo` is a PNG/JPG it is placed on the cover at
-  55 mm; if it is an SVG (or missing), the DOCX cover shows the `organization` name as a
-  text wordmark instead.
+- **HTML / PDF:** uses `logo` — SVG, PNG, or JPG all embed (base64). SVG stays crisp at any
+  size; a colored/dark logo reads best on the white cover.
+- **DOCX:** Word cannot embed SVG, so it uses **`logo_raster`** (PNG/JPG) when present;
+  otherwise it falls back to `logo` if that is itself a PNG/JPG, and failing that shows the
+  `organization` name as a text wordmark. Best practice: `logo` = crisp SVG for HTML/PDF,
+  `logo_raster` = a high-resolution PNG (≥ 600 px wide) for DOCX.
 
 ## extract_theme.py
 
