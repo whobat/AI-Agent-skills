@@ -46,7 +46,7 @@ jobs:
       - name: Python unit tests (branded-report)
         shell: pwsh
         run: |
-          python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4
+          python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4 pillow pypdfium2 pypdf
           Set-Location skills/branded-report/scripts
           python -m unittest test_branded_report -v
 
@@ -72,6 +72,6 @@ jobs:
           python -m unittest test_timetracker -v
       - name: Python unit tests (branded-report)
         run: |
-          python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4
+          python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4 pillow pypdfium2 pypdf
           cd skills/branded-report/scripts
           python -m unittest test_branded_report -v
