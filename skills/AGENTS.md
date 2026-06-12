@@ -10,7 +10,8 @@ This doc owns skill-authoring conventions. Per-skill behavior is documented insi
 
 ## Local Contracts
 
-- **Required files:** `SKILL.md` with frontmatter that follows the [Agent Skills spec](https://agentskills.io/specification) strictly — only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`; no custom top-level fields. `name` must equal the folder name; `license: MIT`; the version lives under `metadata: version: "x.y.z"`. `npm run validate` enforces all of it (also in CI).
+- **Layout:** skills live in **category folders** — `skills/<category>/<name>/` (e.g. `skills/nav-2009/nav2009-sql-performance/`). The grouping is repo-side only; installers discover skills by their `SKILL.md` and install them **flat** into the agent dir. A new category folder must be added to `.claude-plugin/plugin.json`'s `skills` array (the validator fails otherwise). Skill `name`s are **globally unique** across all categories.
+- **Required files:** `SKILL.md` with frontmatter that follows the [Agent Skills spec](https://agentskills.io/specification) strictly — only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`; no custom top-level fields. `name` must equal the skill's **own** folder name (not the category); `license: MIT`; the version lives under `metadata: version: "x.y.z"`. `npm run validate` enforces all of it (also in CI).
 - **Bump `metadata.version` on every behavior change** to a skill — the installers diff installed vs repo version to offer updates. No bump = installed copies never get the change.
 - **Evals:** each skill has `evals/<name>.json` at the repo root with 3+ scenarios (`query` + `expected_behavior`); update them when behavior changes. New skills start from `template/skill-name/`.
 - **`description` is the trigger surface:** keep it specific with example phrasings; agents match on it to decide when to invoke the skill.

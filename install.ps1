@@ -180,6 +180,20 @@ function Resolve-Requirements($manifestPath) {
   }
 }
 
+# Skills live under category subfolders (skills/<category>/<name>/SKILL.md). Find each skill
+# folder by locating its SKILL.md; the install name is the folder's basename.
+function Get-SkillFolders($skillsSrc) {
+  # -Depth 2 matches bin/cli.js (skill folder at most 2 levels below skills/) — installer parity.
+  Get-ChildItem -Path $skillsSrc -Recurse -Depth 2 -Filter 'SKILL.md' -File -ErrorAction SilentlyContinue |
+    ForEach-Object { Get-Item $_.Directory.FullName }
+}
+
+# Map a skill name to its repo folder (or $null if not in this repo).
+function Resolve-SkillSource($skillsSrc, $name) {
+  Get-SkillFolders $skillsSrc | Where-Object { $_.Name -eq $name } |
+    Select-Object -First 1 -ExpandProperty FullName
+}
+
 # Offer to update already-installed skills (from this repo) whose version differs from the repo.
 # Returns the number of update candidates found (0 = everything already current).
 function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
@@ -187,8 +201,8 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
   $candidates = @()
   foreach ($d in (Get-ChildItem -Directory $dest -ErrorAction SilentlyContinue)) {
     if ($chosenNames -contains $d.Name) { continue }          # just (re)installed above
-    $srcDir = Join-Path $skillsSrc $d.Name
-    if (-not (Test-Path $srcDir)) { continue }                # not a skill from this repo
+    $srcDir = Resolve-SkillSource $skillsSrc $d.Name
+    if (-not $srcDir) { continue }                            # not a skill from this repo
     $instV = Get-SkillVersion $d.FullName
     $repoV = Get-SkillVersion $srcDir
     if ($repoV -and ($instV -ne $repoV)) {
@@ -206,7 +220,7 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
     if ($ans -and ($ans.Trim().ToLower() -in @('n', 'no', 'nej'))) { return $candidates.Count }
   }
   foreach ($c in $candidates) {
-    $srcDir = Join-Path $skillsSrc $c.Name
+    $srcDir = Resolve-SkillSource $skillsSrc $c.Name
     $tp = Join-Path $dest $c.Name
     # Preserve user secrets that live inside the skill dir (configs normally live elsewhere).
     $saved = Join-Path $tp 'config.json'
@@ -242,12 +256,12 @@ if ($Update) {
   exit 0
 }
 
-# Resolve which skill folders to install
+# Resolve which skill folders to install (skills are nested under category folders)
 if ($Skill -eq 'all') {
-  $folders = Get-ChildItem -Directory $skillsSrc
+  $folders = @(Get-SkillFolders $skillsSrc)
 } else {
-  $one = Join-Path $skillsSrc $Skill
-  if (-not (Test-Path $one)) { throw "Skill '$Skill' findes ikke i $skillsSrc" }
+  $one = Resolve-SkillSource $skillsSrc $Skill
+  if (-not $one) { throw "Skill '$Skill' not found in $skillsSrc" }
   $folders = @(Get-Item $one)
 }
 

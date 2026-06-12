@@ -56,18 +56,34 @@ function parseFrontmatter(raw) {
 let failures = 0;
 const fail = (skill, msg) => { failures++; console.error(`  FAIL ${skill}: ${msg}`); };
 
-const dirs = fs.readdirSync(SKILLS_DIR, { withFileTypes: true }).filter((d) => d.isDirectory());
-for (const dir of dirs) {
-  const name = dir.name;
-  const skillMd = path.join(SKILLS_DIR, name, 'SKILL.md');
-  if (!fs.existsSync(skillMd)) { fail(name, 'SKILL.md missing'); continue; }
+// Skills are grouped under category subfolders (skills/<category>/<name>/SKILL.md). Discover
+// each skill by its SKILL.md within two levels; the skill folder is its immediate parent.
+function discover(dir, depth, found) {
+  if (fs.existsSync(path.join(dir, 'SKILL.md'))) { found.push(dir); return; }
+  if (depth <= 0) return;
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) discover(path.join(dir, e.name), depth - 1, found);
+  }
+}
+const skillDirs = [];
+discover(SKILLS_DIR, 2, skillDirs);
+
+const seenNames = new Map();   // name -> relative path, for global-uniqueness check
+for (const skillDir of skillDirs) {
+  const name = path.basename(skillDir);
+  const rel = path.relative(REPO, skillDir).replace(/\\/g, '/');
+  const skillMd = path.join(skillDir, 'SKILL.md');
   const fm = parseFrontmatter(fs.readFileSync(skillMd, 'utf8'));
   if (!fm) { fail(name, 'no YAML frontmatter found'); continue; }
+
+  // names install into one flat namespace, so they must be globally unique
+  if (seenNames.has(name)) fail(name, `duplicate skill name (also at ${seenNames.get(name)})`);
+  else seenNames.set(name, rel);
 
   // name
   if (!fm.name) fail(name, 'frontmatter missing required field: name');
   else {
-    if (fm.name !== name) fail(name, `name "${fm.name}" must match directory name "${name}"`);
+    if (fm.name !== name) fail(name, `name "${fm.name}" must match its own folder name "${name}" (${rel})`);
     if (fm.name.length > 64) fail(name, 'name exceeds 64 characters');
     if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(fm.name)) {
       fail(name, 'name must be lowercase [a-z0-9-], no leading/trailing/consecutive hyphens');
@@ -100,8 +116,30 @@ for (const dir of dirs) {
   }
 }
 
+// Every category folder that holds skills must be listed in the plugin's `skills` array,
+// or the Claude Code marketplace would not discover those skills.
+const categories = new Set();
+for (const d of skillDirs) {
+  const parts = path.relative(SKILLS_DIR, d).replace(/\\/g, '/').split('/');
+  if (parts.length >= 2) categories.add(parts[0]);  // skills/<category>/<name>
+}
+const pluginManifest = path.join(REPO, '.claude-plugin', 'plugin.json');
+if (fs.existsSync(pluginManifest)) {
+  let listed = [];
+  try {
+    const m = JSON.parse(fs.readFileSync(pluginManifest, 'utf8'));
+    listed = (Array.isArray(m.skills) ? m.skills : (m.skills ? [m.skills] : []))
+      .map((s) => s.replace(/^\.\//, '').replace(/^skills\//, '').replace(/\/$/, ''));
+  } catch { fail('plugin.json', 'is not valid JSON'); }
+  for (const cat of categories) {
+    if (!listed.includes(cat)) {
+      fail('plugin.json', `category "${cat}" is not in .claude-plugin/plugin.json "skills" (marketplace would miss its skills)`);
+    }
+  }
+}
+
 if (failures > 0) {
-  console.error(`\n${failures} violation(s) across ${dirs.length} skills.`);
+  console.error(`\n${failures} violation(s) across ${skillDirs.length} skills.`);
   process.exit(1);
 }
-console.log(`OK: ${dirs.length} skills pass the Agent Skills spec + repo conventions.`);
+console.log(`OK: ${skillDirs.length} skills pass the Agent Skills spec + repo conventions.`);

@@ -18,14 +18,14 @@ const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const GROUPS = [
   [
-    'skills/nav2009-sql-performance/scripts/Invoke-SqlPerfTriage.ps1',
-    'skills/sqlserver-perf-triage/scripts/Invoke-SqlPerfTriage.ps1',
-    'skills/ax2012-sql-performance/scripts/Invoke-SqlPerfTriage.ps1',
+    'skills/nav-2009/nav2009-sql-performance/scripts/Invoke-SqlPerfTriage.ps1',
+    'skills/sql-server/sqlserver-perf-triage/scripts/Invoke-SqlPerfTriage.ps1',
+    'skills/ax-retail/ax2012-sql-performance/scripts/Invoke-SqlPerfTriage.ps1',
   ],
   [
-    'skills/nav2009-sql-performance/scripts/Invoke-SqlPerfTriage.Tests.ps1',
-    'skills/sqlserver-perf-triage/scripts/Invoke-SqlPerfTriage.Tests.ps1',
-    'skills/ax2012-sql-performance/scripts/Invoke-SqlPerfTriage.Tests.ps1',
+    'skills/nav-2009/nav2009-sql-performance/scripts/Invoke-SqlPerfTriage.Tests.ps1',
+    'skills/sql-server/sqlserver-perf-triage/scripts/Invoke-SqlPerfTriage.Tests.ps1',
+    'skills/ax-retail/ax2012-sql-performance/scripts/Invoke-SqlPerfTriage.Tests.ps1',
   ],
 ];
 

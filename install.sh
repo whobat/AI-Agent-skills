@@ -182,6 +182,21 @@ PYEOF
   done
 }
 
+# Skills live under category subfolders (skills/<category>/<name>/SKILL.md). List each skill
+# folder by locating its SKILL.md; the install name is the folder's basename.
+# -maxdepth 3 matches bin/cli.js (skill folder at most 2 levels below skills/) — installer parity.
+skill_folders() {
+  find "$1" -maxdepth 3 -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do dirname "$m"; done
+}
+
+# Echo a skill name's repo folder (empty if not in this repo).
+resolve_skill_source() {  # $1=src  $2=name
+  find "$1" -maxdepth 3 -name SKILL.md -type f 2>/dev/null | while IFS= read -r m; do
+    d="$(dirname "$m")"
+    if [ "$(basename "$d")" = "$2" ]; then echo "$d"; break; fi
+  done
+}
+
 # Offer to update already-installed skills (from this repo) whose version differs from the repo.
 # Sets UPD_CANDIDATES to the number of update candidates found (0 = everything current).
 update_outdated() {
@@ -194,9 +209,10 @@ update_outdated() {
     [ -d "$d" ] || continue
     name="$(basename "$d")"
     case "$chosen" in *" $name "*) continue ;; esac
-    [ -d "$src/$name" ] || continue
+    srcdir="$(resolve_skill_source "$src" "$name")"
+    [ -n "$srcdir" ] || continue
     instv="$(skill_version "$dest/$name")"
-    repov="$(skill_version "$src/$name")"
+    repov="$(skill_version "$srcdir")"
     [ -n "$repov" ] || continue
     if [ "$instv" != "$repov" ]; then
       cand_name+=("$name"); cand_from+=("${instv:-unknown}"); cand_to+=("$repov")
@@ -217,9 +233,10 @@ update_outdated() {
   fi
   for i in "${!cand_name[@]}"; do
     name="${cand_name[$i]}"
-    local tp="$dest/$name" keep=""
+    local tp="$dest/$name" keep="" srcdir
+    srcdir="$(resolve_skill_source "$src" "$name")"
     [ -f "$tp/config.json" ] && keep="$(cat "$tp/config.json")"
-    rm -rf "$tp"; cp -r "$src/$name" "$tp"
+    rm -rf "$tp"; cp -r "$srcdir" "$tp"
     find "$tp" -name 'config.json' -type f -delete
     find "$tp" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
     [ -n "$keep" ] && printf '%s' "$keep" > "$tp/config.json"
@@ -257,10 +274,11 @@ if [ "$UPDATE" -eq 1 ]; then
 fi
 
 if [ "$SKILL" = "all" ]; then
-  mapfile -t FOLDERS < <(find "$SRC" -mindepth 1 -maxdepth 1 -type d)
+  mapfile -t FOLDERS < <(skill_folders "$SRC")
 else
-  [ -d "$SRC/$SKILL" ] || { echo "Skill '$SKILL' findes ikke i $SRC" >&2; exit 1; }
-  FOLDERS=("$SRC/$SKILL")
+  one="$(resolve_skill_source "$SRC" "$SKILL")"
+  [ -n "$one" ] || { echo "Skill '$SKILL' not found in $SRC" >&2; exit 1; }
+  FOLDERS=("$one")
 fi
 
 for a in "${AGENTS[@]}"; do

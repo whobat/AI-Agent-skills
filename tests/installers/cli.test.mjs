@@ -85,6 +85,30 @@ function run(fx, args, input) {
 const agentDir = (fx) => path.join(fx.home, '.claude', 'skills');
 const credConfig = (fx) => path.join(fx.home, '.credtest', 'config.json');
 
+test('discovers skills nested under category folders and installs them FLAT', () => {
+  const fx = mkFixture();
+  // move beta-skill into a category subfolder: skills/tools/beta-skill/
+  const flat = path.join(fx.repo, 'skills', 'beta-skill');
+  const grouped = path.join(fx.repo, 'skills', 'tools', 'beta-skill');
+  fs.mkdirSync(path.dirname(grouped), { recursive: true });
+  fs.renameSync(flat, grouped);
+  // --list still shows it (discovered recursively)
+  assert.match(run(fx, ['--list']).stdout, /beta-skill/);
+  // installs into the agent dir FLAT (no category folder)
+  const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(fs.existsSync(path.join(agentDir(fx), 'beta-skill', 'SKILL.md')), 'installed flat');
+  assert.ok(!fs.existsSync(path.join(agentDir(fx), 'tools')), 'no category folder in agent dir');
+});
+
+test('ignores skills nested deeper than the depth limit (parity with ps1/sh)', () => {
+  const fx = mkFixture();
+  const deep = path.join(fx.repo, 'skills', 'a', 'b', 'deep-skill');
+  fs.mkdirSync(deep, { recursive: true });
+  fs.writeFileSync(path.join(deep, 'SKILL.md'), frontmatter('deep-skill', '1.0.0'));
+  assert.doesNotMatch(run(fx, ['--list']).stdout, /deep-skill/);
+});
+
 test('--list prints the available skills with repo versions', () => {
   const fx = mkFixture();
   const r = run(fx, ['--list']);

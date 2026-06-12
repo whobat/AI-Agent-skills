@@ -70,6 +70,26 @@ BeforeAll {
 
 Describe 'install.ps1' {
 
+    It 'ignores skills nested deeper than the depth limit (parity with cli/sh)' {
+        $fx = New-Fixture
+        $deep = Join-Path $fx.Repo 'skills\a\b\deep-skill'
+        New-Item -ItemType Directory -Force $deep | Out-Null
+        Set-Content (Join-Path $deep 'SKILL.md') "---`nname: deep-skill`ndescription: x`nlicense: MIT`nmetadata:`n  version: `"1.0.0`"`n---`n"
+        (Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'deep-skill', '-Yes')).Code | Should -Not -Be 0
+    }
+
+    It 'discovers skills nested under category folders and installs them FLAT' {
+        $fx = New-Fixture
+        $flat = Join-Path $fx.Repo 'skills\beta-skill'
+        $grouped = Join-Path $fx.Repo 'skills\tools\beta-skill'
+        New-Item -ItemType Directory -Force (Split-Path $grouped) | Out-Null
+        Move-Item $flat $grouped
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
+        $r.Code | Should -Be 0
+        Join-Path $fx.AgentDir 'beta-skill\SKILL.md' | Should -Exist        # flat
+        Join-Path $fx.AgentDir 'tools' | Should -Not -Exist                  # no category folder
+    }
+
     It 'installs a single skill into the agent dir, showing (new, version)' {
         $fx = New-Fixture
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')

@@ -33,7 +33,8 @@ Known failure modes → what to tell the user.
 
 <!--
 Checklist before opening a PR (see CONTRIBUTING.md):
-- [ ] Folder name == frontmatter name (lowercase, hyphens)
+- [ ] Lives in a category folder: skills/<category>/<name>/ ; new category -> add it to .claude-plugin/plugin.json
+- [ ] Skill's own folder name == frontmatter name (lowercase, hyphens), globally unique
 - [ ] description ≤ 1024 chars, includes when-to-use triggers
 - [ ] metadata.version set; bump it on EVERY behavior change
 - [ ] SKILL.md < 500 lines; details go in REFERENCE.md (linked one level deep)

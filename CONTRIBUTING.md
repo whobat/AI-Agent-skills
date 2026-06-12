@@ -6,8 +6,12 @@ rejects anything that doesn't.
 
 ## Adding a skill
 
-1. Copy `template/skill-name/` to `skills/<your-skill-name>/` and fill it in.
-   The folder name must equal the frontmatter `name`.
+1. Copy `template/skill-name/` to `skills/<category>/<your-skill-name>/` and fill it in.
+   The skill's own folder name must equal the frontmatter `name` (the category folder above
+   it is just for overview). Pick an existing category (`nav-2009`, `ax-retail`, `sql-server`,
+   `windows-ops`, `documents`, `time-tracking`, `repo-tooling`) or add a new one — if new,
+   add `"./skills/<category>"` to `.claude-plugin/plugin.json`'s `skills` array (the validator
+   fails otherwise). Skill `name`s must be globally unique across all categories.
 2. Frontmatter rules (enforced by `npm run validate`):
    - Only spec-defined fields: `name`, `description`, `license`, `compatibility`,
      `metadata`, `allowed-tools`. **No custom top-level fields.**
