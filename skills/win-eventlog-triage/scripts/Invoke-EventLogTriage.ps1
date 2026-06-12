@@ -242,7 +242,10 @@ function Invoke-HostTriage {
 
   $remote = {
     param($logs, $levels, $start, $end, $maxEvents, $maxLen)
-    $out = [System.Collections.Generic.List[object]]::new()
+    # Runs ON the target server, whose Windows PowerShell may be old (Server 2008/2012
+    # ship PS 2.0-4.0). The static-new constructor syntax is PS 5.0+, so use New-Object
+    # here to stay down-level compatible. Keep this whole block to PS 3.0-era constructs.
+    $out = New-Object System.Collections.Generic.List[object]
     $scanned = 0
     $truncated = $false
     foreach ($log in $logs) {
