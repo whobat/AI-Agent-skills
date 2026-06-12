@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["branded-report"],
+    "query": "Give me this report as a nicely formatted PDF using our PowerPoint template's colors and design.",
+    "expected_behavior": [
+      "Extracts a theme from the PowerPoint template with extract_theme.py (colors, fonts, logo) into a theme.json",
+      "Runs build_report.py with that theme to produce the PDF (and offers HTML/DOCX too)",
+      "Reports where the file was written; if no headless browser is present, says PDF was skipped and offers the HTML to print"
+    ]
+  },
+  {
+    "skills": ["branded-report"],
+    "query": "I need this as both a Word document and a PDF, and they must look identical and on-brand.",
+    "expected_behavior": [
+      "Runs build_report.py with --formats docx,pdf and the same theme so both share one design",
+      "Notes that a DOCX logo must be PNG/JPG (SVG embeds only in HTML/PDF) and falls back to the organization wordmark otherwise",
+      "Confirms both outputs use the theme's brand colors and fonts"
+    ]
+  },
+  {
+    "skills": ["branded-report"],
+    "query": "Make a standardized report template so all our reports come out looking the same.",
+    "expected_behavior": [
+      "Establishes a single theme.json (extracted from the brand template or hand-written from theme.example.json) to reuse across reports",
+      "Explains that the agent writes the content as Markdown and the script renders consistent HTML/PDF/DOCX from it",
+      "Keeps the theme file local (organization-specific), not committed to the public repo"
+    ]
+  }
+]

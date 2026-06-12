@@ -1,0 +1,23 @@
+{
+  "requires": ["Python 3.8+"],
+  "pipPackages": ["markdown", "python-docx", "beautifulsoup4"],
+  "requirements": [
+    {
+      "name": "Headless browser (Chrome/Edge/Chromium) for PDF",
+      "detect": "chrome",
+      "detectPaths": [
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser"
+      ],
+      "warnOnly": true,
+      "help": "Only needed for PDF output. HTML and DOCX work without it. Install Chrome, Edge, or Chromium, or open the generated HTML and Print to PDF.",
+      "url": "https://www.google.com/chrome/"
+    }
+  ]
+}
