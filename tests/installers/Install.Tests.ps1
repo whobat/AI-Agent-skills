@@ -70,6 +70,18 @@ BeforeAll {
 
 Describe 'install.ps1' {
 
+    It 'discovers skills nested under category folders and installs them FLAT' {
+        $fx = New-Fixture
+        $flat = Join-Path $fx.Repo 'skills\beta-skill'
+        $grouped = Join-Path $fx.Repo 'skills\tools\beta-skill'
+        New-Item -ItemType Directory -Force (Split-Path $grouped) | Out-Null
+        Move-Item $flat $grouped
+        $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
+        $r.Code | Should -Be 0
+        Join-Path $fx.AgentDir 'beta-skill\SKILL.md' | Should -Exist        # flat
+        Join-Path $fx.AgentDir 'tools' | Should -Not -Exist                  # no category folder
+    }
+
     It 'installs a single skill into the agent dir, showing (new, version)' {
         $fx = New-Fixture
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')

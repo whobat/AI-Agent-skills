@@ -43,6 +43,12 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 
 ## Repository layout
 
+Skills are grouped into **category folders** for overview (`skills/<category>/<name>/`).
+The grouping is repo-side only — every installer discovers skills by their `SKILL.md` and
+installs them **flat** into the agent's skills dir, so an agent still sees one namespace
+(`~/.claude/skills/<name>/`). Each category folder is listed in `.claude-plugin/plugin.json`
+so the Claude Code marketplace finds them too.
+
 ```
 AI-Agent-skills/
 ├── README.md
@@ -51,15 +57,20 @@ AI-Agent-skills/
 ├── bin/cli.js                 # npx installer (interactive + flags)
 ├── install.ps1                # script installer (Windows PowerShell)
 ├── install.sh                 # script installer (macOS/Linux/Git-Bash)
+├── .claude-plugin/            # marketplace.json + plugin.json (lists the category folders)
 └── skills/
-    └── 7pace-time-tracker/ # one folder per skill (7pace Timetracker)
-        ├── SKILL.md            # the skill manifest + instructions
-        ├── REFERENCE.md        # detailed reference (optional)
-        ├── skill.install.json  # optional: runtime requirements, pip packages, credential-setup command
-        ├── config.example.json # template — copy to config.json (gitignored)
-        └── scripts/
-            ├── timetracker.py
-            └── test_timetracker.py
+    ├── nav-2009/              # category folder (7 NAV 2009 skills)
+    ├── ax-retail/             # Dynamics AX 2012 + Retail POS
+    ├── sql-server/ · windows-ops/ · documents/ · time-tracking/ · repo-tooling/
+    └── time-tracking/
+        └── 7pace-time-tracker/   # one folder per skill; name == this folder
+            ├── SKILL.md            # the skill manifest + instructions
+            ├── REFERENCE.md        # detailed reference (optional)
+            ├── skill.install.json  # optional: runtime requirements, pip packages, credential-setup command
+            ├── config.example.json # template — copy to config.json (gitignored)
+            └── scripts/
+                ├── timetracker.py
+                └── test_timetracker.py
 ```
 
 ## Available skills

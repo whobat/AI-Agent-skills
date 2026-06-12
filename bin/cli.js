@@ -48,10 +48,28 @@ function parseArgs(argv) {
   return a;
 }
 
+// Skills live under category subfolders (skills/<category>/<name>/SKILL.md). Discover them
+// by finding every SKILL.md within two levels of skills/; the skill is its parent folder,
+// and the install name is that folder's basename. Returns Map(name -> absolute repo path).
+function discoverSkills() {
+  const map = new Map();
+  if (!fs.existsSync(SKILLS_DIR)) return map;
+  const scan = (dir, depth) => {
+    if (fs.existsSync(path.join(dir, 'SKILL.md'))) { map.set(path.basename(dir), dir); return; }
+    if (depth <= 0) return;
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) scan(path.join(dir, e.name), depth - 1);
+    }
+  };
+  scan(SKILLS_DIR, 2);
+  return map;
+}
+
+const SKILL_PATHS = discoverSkills();
+const skillSource = (name) => SKILL_PATHS.get(name) || path.join(SKILLS_DIR, name);
+
 function listSkills() {
-  return fs.readdirSync(SKILLS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name);
+  return [...SKILL_PATHS.keys()].sort();
 }
 
 function ask(question) {
@@ -131,7 +149,7 @@ function hasPyFile(dir) {
 
 // A skill needs Python if it ships .py scripts or its auth command runs python.
 function skillNeedsPython(name) {
-  const dir = path.join(SKILLS_DIR, name);
+  const dir = skillSource(name);
   const manifest = path.join(dir, 'skill.install.json');
   if (fs.existsSync(manifest)) {
     try {
@@ -151,7 +169,7 @@ function versionNote(prev, repo) {
 }
 
 function installSkill(name, destDir, symlink) {
-  const src = path.join(SKILLS_DIR, name);
+  const src = skillSource(name);
   const dest = path.join(destDir, name);
   const note = versionNote(skillVersion(dest), skillVersion(src));
   fs.mkdirSync(destDir, { recursive: true });
@@ -172,7 +190,7 @@ function installSkill(name, destDir, symlink) {
 
 // "[installed 1.0.0 -> latest 1.0.2]" / "[installed 1.0.2, up to date]" / "[v1.0.2, not installed]"
 function skillStatusNote(name, agent) {
-  const repoV = skillVersion(path.join(SKILLS_DIR, name));
+  const repoV = skillVersion(skillSource(name));
   if (!repoV) return '';
   const instV = agent && TARGETS[agent] ? skillVersion(path.join(TARGETS[agent], name)) : null;
   if (instV && instV !== repoV) return `[installed ${instV} -> latest ${repoV}]`;
@@ -393,7 +411,7 @@ async function updateOutdated(destDir, chosenNames, autoYes) {
   const candidates = [];
   for (const e of fs.readdirSync(destDir, { withFileTypes: true })) {
     if (!e.isDirectory() || chosenNames.includes(e.name)) continue;
-    const srcDir = path.join(SKILLS_DIR, e.name);
+    const srcDir = skillSource(e.name);
     if (!fs.existsSync(srcDir)) continue;
     const instV = skillVersion(path.join(destDir, e.name));
     const repoV = skillVersion(srcDir);
@@ -411,7 +429,7 @@ async function updateOutdated(destDir, chosenNames, autoYes) {
     const cfg = path.join(dest, 'config.json');
     const keep = fs.existsSync(cfg) ? fs.readFileSync(cfg) : null;
     fs.rmSync(dest, { recursive: true, force: true });
-    fs.cpSync(path.join(SKILLS_DIR, c.name), dest, { recursive: true });
+    fs.cpSync(skillSource(c.name), dest, { recursive: true });
     rmAll(dest, 'config.json');
     rmAll(dest, '__pycache__');
     if (keep !== null) fs.writeFileSync(cfg, keep);

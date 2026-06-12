@@ -81,6 +81,15 @@ check "beta-skill installed" '[ -f "$AGENT_DIR/beta-skill/SKILL.md" ]'
 check "alpha-skill not installed" '[ ! -d "$AGENT_DIR/alpha-skill" ]'
 out_contains "shows (new, version)" "(new, 2.0.0)"
 
+echo "- discovers skills nested under category folders and installs them FLAT"
+new_fixture
+mkdir -p "$REPO/skills/tools"
+mv "$REPO/skills/beta-skill" "$REPO/skills/tools/beta-skill"
+run_installer --agent claude --skill beta-skill --yes
+check "exit code 0" '[ "$RC" -eq 0 ]'
+check "installed flat" '[ -f "$AGENT_DIR/beta-skill/SKILL.md" ]'
+check "no category folder in agent dir" '[ ! -d "$AGENT_DIR/tools" ]'
+
 echo "- reinstalling over an older version shows the transition"
 new_fixture
 mkdir -p "$AGENT_DIR/beta-skill"
