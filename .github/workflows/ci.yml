@@ -41,13 +41,13 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check requests
-          Set-Location skills/7pace-time-tracker/scripts
+          Set-Location (Get-ChildItem skills -Recurse -Filter test_timetracker.py)[0].Directory
           python -m unittest test_timetracker -v
       - name: Python unit tests (branded-report)
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4 pillow pypdfium2 pypdf
-          Set-Location skills/branded-report/scripts
+          Set-Location (Get-ChildItem skills -Recurse -Filter test_branded_report.py)[0].Directory
           python -m unittest test_branded_report -v
 
   linux:
@@ -68,10 +68,10 @@ jobs:
       - name: Python unit tests (7pace-time-tracker)
         run: |
           python -m pip install --disable-pip-version-check requests
-          cd skills/7pace-time-tracker/scripts
+          cd "$(dirname "$(find skills -name test_timetracker.py | head -1)")"
           python -m unittest test_timetracker -v
       - name: Python unit tests (branded-report)
         run: |
           python -m pip install --disable-pip-version-check markdown python-docx beautifulsoup4 pillow pypdfium2 pypdf
-          cd skills/branded-report/scripts
+          cd "$(dirname "$(find skills -name test_branded_report.py | head -1)")"
           python -m unittest test_branded_report -v
