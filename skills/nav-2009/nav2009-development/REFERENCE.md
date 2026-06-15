@@ -163,6 +163,28 @@ raise a runtime error or are swallowed depending on the call. Guard every UI cal
 and move file paths to server-accessible shares or XMLport streams. Code intended for NAS must be validated
 without any client present; use the Classic Debugger to confirm `GUIALLOWED` returns FALSE in your test path.
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+### Before changing code — confirm intent and preconditions
+
+Do not assume the issue description is precise or that the object structure matches what the standard documentation says.
+
+- **Reproduce the issue first.** Run the exact scenario in the dev/test environment and confirm the symptom before touching any object. If you cannot reproduce it, stop — you cannot verify a fix for something you haven't seen.
+- **Confirm the actual table keys, SIFT views, and license granule in this database.** Open the table in C/SIDE and read the Keys tab; do not assume a key or SumIndexField exists because it does in a vanilla database. Check whether `MaintainSQLIndex` and `MaintainSIFTIndex` are actually enabled. Confirm the license granule covers the object you intend to modify (Tools → License Information).
+- **Check the change compiles in dev/test before touching any production object.** C/SIDE will compile in place; use a development database (a restored backup or a dedicated dev company) so a compile error never breaks a live environment.
+
+### After the C/AL change — verify output and side-effects
+
+Do not assume that compiling without errors means the change is correct.
+
+- **Compile the modified object(s) explicitly** (F11 or Tools → Compile) and resolve every error and warning before proceeding.
+- **Re-run the full scenario end to end.** For a posting path this means posting a test document and verifying the resulting ledger entries, not just that the posting dialog closes without an error message.
+- **Confirm posting/validation works end to end:** check that related documents (statistics, reports, FlowFields) reflect the correct values after the change — a SIFT or key change can silently shift which view is used for aggregation.
+- **Check that performance did not regress.** A key or SIFT change can shift locking patterns and query plans. Run Client Monitor before and after on the same scenario; compare logical reads on the affected tables. If a hot ledger table (G/L Entry, Item Ledger Entry, Value Entry) is involved, a quick SQL check (`sys.dm_exec_query_stats`, or the nav2009-sql-performance triage) is warranted.
+- **Fail loud.** If you could not actually run the changed code path — because the dev environment is unavailable, because the scenario requires data you don't have, or for any other reason — say so explicitly. Do not report the change as verified when it was only compiled.
+
 ## Useful diagnostics (NAV 2009 toolbox)
 
 - **Client Monitor** (Classic: Tools → Debugger → Client Monitor): per-call client-side trace —

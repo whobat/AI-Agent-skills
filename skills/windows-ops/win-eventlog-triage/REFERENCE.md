@@ -227,6 +227,26 @@ registered provider name with
 `(Get-WinEvent -ListProvider '*<keyword>*').Name` before concluding the log
 is clean.
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+This is a **read-only** triage skill — it does not modify anything on the target servers. Before drawing conclusions and before reporting results, verify that the run itself was sound.
+
+**Before relying on the result — confirm coverage is complete.**
+
+- **No failed hosts.** Check `summary.failures`: any entry with `status` of `unreachable` or `auth_failed` means that host is absent from the data. Never state "all servers look clean" if any host is listed there. Relay the failure and its `hint` field explicitly.
+- **No truncated hosts.** Check every host in `hosts[]` for `truncated: true`. A truncated host means `Get-WinEvent` hit the `-MaxEvents` cap and silently dropped older events in the window — the oldest slice of the window is simply missing. Do not draw coverage conclusions ("no issues before 03:00") for a truncated host. Surface the flag and narrow the window or raise `-MaxEvents` before concluding.
+- **Time window and log/level scope match the question.** Verify `query.from`/`query.to`, `query.logs`, and `query.levels` against what was asked. A mismatch (e.g., Security log omitted, Warning level excluded, window starts an hour too late) means the answer addresses a different question than the one posed.
+- **Operator-local → UTC conversion is accounted for.** Input parameters (`-Hours`, `-Since`, `-From`/`-To`) are resolved in the operator machine's local time; `query.from`/`query.to` in the output are UTC. Confirm the UTC window in the output actually covers the period the user cares about before proceeding. (See the *Time-window inputs are operator-local* gotcha for an example.)
+- **Establish what normal looks like.** Before labelling something an anomaly, consider whether the provider/event-ID combination is expected background noise in this environment. If a suppress list is in use (`query.suppress_list_applied: true`), known-benign events are already filtered; if not, cross-check unfamiliar high-count entries against the *High event counts are not severity* gotcha before surfacing them as findings.
+
+**Output verification — cross-check findings and confirm remediation.**
+
+- **Cross-check a top finding against the raw event — do not trust counts alone.** The `sample_message` in `top_critical` is a single truncated example; it may not represent all occurrences in the group. Before reporting a finding, open the raw event (via `Get-WinEvent` or Event Viewer on the server) and confirm the message content, exact timestamp, and context match what the JSON implies. A high-count group with a vague sample message warrants a spot-check.
+- **Re-run after remediation.** If a remediation action is applied in response to a finding (service restarted, patch applied, config changed), re-run the triage over the same time window (or a short post-fix window) and confirm that the error group is absent or its `last_seen` predates the fix. A finding that persists post-fix means either the fix did not take effect or a separate instance of the same issue is occurring.
+- **Fail loud on any failed or truncated host.** Never present a result as covering the full target set when any host is in `summary.failures` or carries `truncated: true`. Always make the gap explicit in the summary, even if the user did not ask about it.
+
 ## Testing
 
 ```powershell

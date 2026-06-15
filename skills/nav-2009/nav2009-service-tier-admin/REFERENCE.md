@@ -158,6 +158,26 @@ With `-OutFile`, stdout carries a compact summary:
    check Windows Application and System Event Logs on the target for service-start failures
    (common causes: SQL Server unreachable, certificate not found, port already in use).
 
+## Verification
+
+### Before a restart (inventory first)
+
+Run the script **without** `-Restart` first and confirm:
+
+1. **Right instance.** Check `instanceName` and `configPath` in the JSON match the instance you intend to restart. On a multi-instance box it is easy to target the wrong service.
+2. **Expected service account.** Confirm `account` is the service account you expect. A mismatch suggests a config drift or a previous change that was never audited.
+3. **Current service status.** Note `status` (`Running`, `Stopped`, etc.) so you have a before-state to compare against.
+4. **Config you will rely on.** Read the relevant `settings.*` keys from this inventory run — specifically the `DatabaseServer`, `DatabaseName`, ports, and `ClientServicesCredentialType`. If you edited CustomSettings.config and want to verify the edit landed on disk, compare the file on disk against what the script reports; they should differ before the restart and match after.
+5. **Users warned.** Restarting disconnects all active RTC clients. Confirm the user has acknowledged this and that the restart window is appropriate.
+
+Inventory itself is read-only and has no side effects — running it multiple times is safe.
+
+### After a restart (output verification)
+
+1. **Service came back.** Check `restart.ok = true` and `restart.after = Running`. If `restart.ok = false`, the service did not return within `-RestartTimeoutSec` — **fail loud**: do not assume the restart succeeded. Check the Windows Application and System Event Logs on the target for `Microsoft.Dynamics.Nav.Server` source entries before proceeding.
+2. **SQL connectivity.** Re-run the script (without `-Restart`) immediately after the restart and confirm the instance is `Running` and `settings.DatabaseServer` / `settings.DatabaseName` reflect the intended values. A service that starts but cannot reach SQL will appear as `Stopped` or will cycle; watch `status` across two consecutive inventory runs if uncertain.
+3. **Config change took effect.** If the restart was triggered by a CustomSettings.config edit, compare the `settings.*` values in the post-restart inventory against what you wrote. They must now match. If they do not, you may have edited the wrong instance's config file (see the multi-instance gotcha below) — re-read `configPath` and verify.
+
 ## Gotchas
 
 **CustomSettings.config edits are silently ignored until the service restarts.**
@@ -214,3 +234,5 @@ exits. Correct check: on SRV01, open `certlm.msc` → Personal → Certificates 
 thumbprint in `settings.ServicesCertificateThumbprint` is present; right-click → All Tasks →
 Manage Private Keys and verify the service account (`account` field) has at least Read permission.
 If the cert is missing, re-import it from the original PFX before restarting.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.

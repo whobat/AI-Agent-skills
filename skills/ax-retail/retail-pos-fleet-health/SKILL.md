@@ -4,7 +4,7 @@ description: Health sweep across a fleet of Windows POS machines (Dynamics AX 20
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine, WinRM (PowerShell Remoting) enabled on the targets, and a credential with admin rights on them
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # Retail POS Fleet Health

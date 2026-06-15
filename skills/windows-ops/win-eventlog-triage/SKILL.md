@@ -4,7 +4,7 @@ description: Triage Windows Event Logs across one or many servers. Pulls Critica
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine and WinRM (PowerShell Remoting) enabled on the target servers
 metadata:
-  version: "1.1.3"
+  version: "1.1.4"
 ---
 
 # Windows Event Log Triage

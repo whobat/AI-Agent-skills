@@ -4,7 +4,7 @@ description: Read-only triage of Remote Desktop Services (RDS) session-host prof
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine. WinRM mode needs PowerShell Remoting on the target RDS hosts; DCOM mode needs WMI/DCOM (TCP 135 + dynamic range) reachable. Read-only — makes no changes.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # RDS Profile & WinRM-Host Triage

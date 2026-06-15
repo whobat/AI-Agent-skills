@@ -4,7 +4,7 @@ description: Update skills installed FROM THE AI-Agent-skills GitHub REPO (githu
 license: MIT
 compatibility: Requires Node.js 18+ for the npx path, or a local clone of the repo for the script installers
 metadata:
-  version: "1.0.2"
+  version: "1.0.3"
 ---
 
 # AI-Agent-skills Update
@@ -64,3 +64,34 @@ Running `npx -y github:whobat/AI-Agent-skills` fetches and runs the latest repo 
 
 **A preserved `config.json` can mask a new required config key added in the update.**
 The update keeps the existing `config.json` intact, so secrets are safe. But if the updated skill adds a new required key that does not exist in the preserved file, the skill will silently lack that value at runtime. After updating a skill that has a `config.json`, check its `config.example.json` (if present) for any keys not yet in the local copy.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+Run these checks before and after the update to confirm the operation did exactly what was expected — nothing more, nothing less.
+
+### Before updating
+
+1. **Inventory installed repo skills and their current versions.**
+   For each agent (`~/.claude/skills`, `~/.agents/skills`, `~/.config/opencode/skills`), list every skill folder whose name matches a skill published in this repo and note its `metadata.version` from `SKILL.md`. These are the only candidates — skills from other sources are out of scope and must not appear in the diff.
+
+2. **Ensure the source clone is current (script-fallback path only).**
+   If you are using `./install.ps1 -Update` or `./install.sh --update` instead of `npx`, the comparison runs against the *local clone*. A stale clone offers no updates even when newer versions exist in the repo. Confirm the clone's HEAD matches origin before proceeding:
+   ```bash
+   git -C <repo-clone-path> fetch --dry-run
+   ```
+   If the clone is behind, run `git pull` before the update run.
+
+3. **Confirm `config.json` and `gotchas.local.md` exist where expected.**
+   For every installed skill that has local overrides, note their paths now. You will verify they are still present and byte-identical after the run.
+
+### After updating
+
+1. **Version bump confirmed.** For every skill the installer reported as updated, read the installed `SKILL.md` and assert that `metadata.version` now matches the version in the repo. **Fail loud** if a skill the installer said it updated still shows the old version string.
+
+2. **No unintended installs.** The installed skill list must not contain any skill folder that was absent before the run. If a new folder appeared, flag it — `--update` mode must not install new skills.
+
+3. **Non-repo skills untouched.** Any skill folder whose name does not match a skill in this repo must be byte-identical before and after. Spot-check at least one to confirm.
+
+4. **Local overrides survived.** For every skill that had a `config.json` or `gotchas.local.md` before the run, confirm the file is still present and its contents are unchanged. If either file is missing or differs, the update must be treated as failed — surface this immediately rather than continuing.

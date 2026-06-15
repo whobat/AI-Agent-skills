@@ -99,6 +99,8 @@ binary actually exists and `Get-PSSessionConfiguration` is intact, then look at 
   and a failing one owned by the user — don't chase ownership/MS16-072 before confirming the
   user actually fails (see gotcha #2/#3).
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
 ## DCOM fallback recipe (when WinRM is dead)
 
 When a host returns "could not launch a host process", you can still manage it over CIM/DCOM.
@@ -173,6 +175,47 @@ against the same state produce byte-identical text. `-Format json`/`both` expose
 
 Per-host `status`: `ok` (collected) or `failed` (with `error` + an actionable `hint`). A failed
 host never aborts the run. `findings` severity order: `critical` → `high` → `medium`.
+
+## Verification
+
+This skill is **read-only**. Verification happens in two places: before you conclude anything,
+and after a remediation is applied.
+
+### Before recommending anything — confirm the data is trustworthy
+
+1. **Every host collected.** Check `summary.hosts_failed`. Any host with `status: failed` was
+   not fully collected. Re-run it with `-Protocol Dcom` (the `hint` in the output says so) and
+   relay the reduced result. Fail loud if a host in the farm is still missing after the DCOM
+   re-run — coverage gaps mean gaps in your conclusion.
+2. **Roaming path read RAW.** Confirm `roaming_profile.machine_profile_path_raw` contains the
+   literal `%USERNAME%` (or a literal username that was deliberately hardcoded). If it shows
+   the admin's own username and `value_kind` is `ExpandString`, the value was expanded — it is
+   not the raw registry content. Trust only what the script emits via
+   `RegistryValueOptions.DoNotExpandEnvironmentNames` (WinRM) or `StdRegProv.GetStringValue`
+   (DCOM). A manual cross-check: `reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\System" /v MachineProfilePath`
+   on the host — the output must show `REG_EXPAND_SZ` with `%USERNAME%` unexpanded.
+3. **Profile-failure events attributed to the actual user.** Before calling an event-storm a
+   real outage, verify `user_class` for each `profile_events` group. Dismiss `self_or_admin`
+   (your own double-hop artifact) and `service_account` churn. A real outage requires at least
+   one `interactive_user` failure. If the only events are `self_or_admin` or `service_account`,
+   establish that baseline explicitly — "no interactive-user failures seen in the window" — before
+   moving on.
+
+### After remediation — confirm the fix landed
+
+Re-run the triage against the same host(s) after any remediation is applied:
+
+- **Reboot to clear leaked hives.** After the host comes back, re-run and confirm
+  `hive_leak.leaked = 0` (or the value dropped to an acceptable level) and that the affected
+  user can log on successfully.
+- **Corrupt ProfileList entries removed.** Re-run and confirm `profilelist.empty_path = 0`,
+  `profilelist.bak = 0`, and `profilelist.temp_pointing = 0` for the entries that were removed.
+  Also confirm `winrm_host_launch.failing = false` if the host's WinRM was down — the host
+  should now respond to WinRM without `-Protocol Dcom`.
+- **Reduced DCOM coverage.** If a host is still only reachable via `-Protocol Dcom` after
+  remediation, say so explicitly. DCOM mode returns a reduced dataset; full confirmation of
+  hive-leak and event data requires WinRM. Do not assert "all clear" from a DCOM-only run —
+  re-run in WinRM mode once the endpoint recovers.
 
 ## Testing
 

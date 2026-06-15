@@ -171,3 +171,33 @@ The NAV client's `Backup Company` function produces a `.fbk` file in the depreca
 
 **DBCC CHECKDB on a busy production instance competes heavily for I/O and tempdb — run it during a low-activity window.**
 `DBCC CHECKDB` reads every page of every object in the database using an internal database snapshot (on SQL 2005 SP2+ with sufficient disk space in tempdb), and on older or resource-constrained instances it can fall back to acquiring shared locks on objects instead. Both paths generate significant I/O that competes directly with NAV posting and report queries. On a large NAV database (tens of GB) a full `CHECKDB` can run for hours. If daytime integrity validation is required, use `DBCC CHECKDB ('<DB>') WITH PHYSICAL_ONLY` for a fast page-level check and defer the full logical consistency check to an overnight window.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+This is an ACTION skill — backup, CHECKDB, index rebuild, and statistics update all change database state. Verify at each phase.
+
+### BEFORE running with `-Execute`
+
+1. **Run the dry run first and read the T-SQL.** Execute the script without `-Execute` and inspect every `plan` array in the returned JSON. Confirm the statements target the correct server, database, and indexes before proceeding. Do not skip this step even for routine maintenance.
+
+2. **Confirm a current backup exists before any destructive or heavy operation.** Before running CHECKDB or index rebuild, verify that a recent SQL Server `.bak` backup has been taken and is restorable. A failed CHECKDB or an interrupted rebuild that leaves an index in an inconsistent state is recoverable only if a good backup exists. Do not rely on a `.fbk` (NAV native backup) — it is not a SQL Server backup (see Gotchas).
+
+3. **Confirm a maintenance window is in place for rebuilds and CHECKDB.** Index rebuild (`OFFLINE`) and a full CHECKDB acquire locks that block all reads and writes on affected tables for the duration. On Standard edition `ONLINE = ON` is unavailable. Verify that no NAV clients are posting, no scheduled posting jobs are running, and no reports are active before issuing `-Execute` for these actions.
+
+4. **Confirm you are not creating or dropping indexes.** The planned T-SQL must contain only `ALTER INDEX ... REBUILD` or `ALTER INDEX ... REORGANIZE` statements for index maintenance. Any `CREATE INDEX` or `DROP INDEX` in the plan is a defect — do not execute it.
+
+### OUTPUT verification (after `-Execute`)
+
+1. **Confirm execution actually happened.** Check that the top-level `"executed"` field in the JSON is `true`. If it is `false`, the script ran in dry-run mode — re-run with `-Execute`.
+
+2. **Check each section's `status`.** Every requested action should show `status: ok`. A status of `planned`, `skipped`, or `error` means the action did not complete successfully. Fail loud — do not report maintenance as done if any section was not `ok`.
+
+3. **Verify backup restorability.** After a backup action, run `RESTORE VERIFYONLY FROM DISK = N'<path>'` against the `.bak` file to confirm the backup is readable and structurally valid. A backup that cannot be verified is not a usable backup.
+
+4. **Verify CHECKDB returned 0 errors.** In the `checkdb.data.result` field, confirm the message contains `CHECKDB found 0 allocation errors and 0 consistency errors`. Any non-zero error count must be investigated immediately — do not proceed with other maintenance actions until the integrity issue is understood.
+
+5. **Verify fragmentation dropped after index maintenance.** Re-run the fragmentation query from **nav2009-sql-performance** (or a direct `sys.dm_db_index_physical_stats` query) on the rebuilt/reorganized indexes and confirm `avg_fragmentation_in_percent` is below the reorganize threshold. If fragmentation is unchanged, the rebuild may have been skipped or interrupted.
+
+6. **Verify statistics were updated after a statistics action.** Query `sys.dm_db_stats_properties` on high-volume tables (e.g., `Item Ledger Entry`, `G/L Entry`) and confirm `last_updated` reflects the current maintenance window. If `rows_sampled` is significantly below `rows`, consider a targeted `UPDATE STATISTICS ... WITH FULLSCAN` on those tables.

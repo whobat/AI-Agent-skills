@@ -233,13 +233,16 @@ update_outdated() {
   fi
   for i in "${!cand_name[@]}"; do
     name="${cand_name[$i]}"
-    local tp="$dest/$name" keep="" srcdir
+    local tp="$dest/$name" keep="" keepg="" srcdir
     srcdir="$(resolve_skill_source "$src" "$name")"
     [ -f "$tp/config.json" ] && keep="$(cat "$tp/config.json")"
+    [ -f "$tp/gotchas.local.md" ] && keepg="$(cat "$tp/gotchas.local.md")"
     rm -rf "$tp"; cp -r "$srcdir" "$tp"
     find "$tp" -name 'config.json' -type f -delete
+    find "$tp" -name 'gotchas.local.md' -type f -delete
     find "$tp" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
     [ -n "$keep" ] && printf '%s' "$keep" > "$tp/config.json"
+    [ -n "$keepg" ] && printf '%s' "$keepg" > "$tp/gotchas.local.md"
     echo "  updated $name -> ${cand_to[$i]}"
     ensure_requirements "$tp/skill.install.json"
   done
@@ -307,6 +310,7 @@ for f in "${FOLDERS[@]}"; do
   else
     cp -r "$f" "$target"
     find "$target" -name 'config.json' -type f -delete
+    find "$target" -name 'gotchas.local.md' -type f -delete
     find "$target" -name '__pycache__' -type d -prune -exec rm -rf {} +
     echo "  installed $name -> $target$note"
   fi
