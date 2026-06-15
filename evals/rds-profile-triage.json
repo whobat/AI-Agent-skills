@@ -1,0 +1,32 @@
+[
+  {
+    "skills": ["rds-profile-triage"],
+    "query": "A user on our RDS farm gets logged out immediately when she signs in - it just says 'logged out'. Can you see what's happening on RDS01?",
+    "expected_behavior": [
+      "Runs Invoke-RdsProfileTriage.ps1 with pwsh against RDS01 (credential prompted, never on the command line)",
+      "Leads with summary.findings; checks hive_leak (orphaned loaded hives vs active sessions) and profilelist corruption as logged-out/temp-profile causes",
+      "Distinguishes the affected interactive user (user_class=interactive_user) from service-account or self_or_admin noise before blaming anything",
+      "Proposes remediation (e.g. reboot to clear leaked hives) only after diagnosis and confirms before any change"
+    ]
+  },
+  {
+    "skills": ["rds-profile-triage"],
+    "query": "Everyone on the terminal servers is getting temporary profiles and their settings don't save. Is the roaming profile GPO broken / hardcoded to one user?",
+    "expected_behavior": [
+      "Reports the roaming path from roaming_profile.machine_profile_path_raw and explicitly does NOT claim it is hardcoded unless the RAW value truly lacks %USERNAME% (REG_EXPAND_SZ expansion caveat)",
+      "Groups profile_events by user and attributes temp-profile churn to the actual account(s) - typically a backup/batch service_account - rather than calling it farm-wide",
+      "Treats any 'Access is denied' events tagged user_class=self_or_admin as a possible double-hop artifact of the operator's own connection, not a user outage",
+      "Recommends excluding the service account from the roaming GPO (or cleanup) rather than 'fixing' a GPO that is actually correct"
+    ]
+  },
+  {
+    "skills": ["rds-profile-triage"],
+    "query": "I can't PowerShell-remote into RDS02 - it errors 'the WSMan service could not launch a host process'. Figure out why.",
+    "expected_behavior": [
+      "Recognises the WinRM host-launch failure and re-runs that host with -Protocol Dcom to collect over CIM/DCOM instead of WinRM",
+      "Inspects profilelist corruption (empty ProfileImagePath / .bak pointing to deleted TEMP dirs) as the 'Element not found' cause of wsmprovhost failing to register (Event 86 + DCOM 10000 error 0)",
+      "Does not jump to re-registering WinRM, DCOM permissions, or reinstalling .NET before checking the profile store",
+      "If corruption is found, recommends backing up ProfileList then removing the corrupt entries, and re-testing WinRM"
+    ]
+  }
+]
