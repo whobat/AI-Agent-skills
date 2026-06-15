@@ -4,7 +4,7 @@ description: Update skills installed FROM THE AI-Agent-skills GitHub REPO (githu
 license: MIT
 compatibility: Requires Node.js 18+ for the npx path, or a local clone of the repo for the script installers
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # AI-Agent-skills Update
@@ -50,3 +50,17 @@ is against the clone):
    repo — run `npm cache clean --force` and retry once.
 4. Skills updated in the **current** agent are not reloaded mid-session — mention that new
    skill versions take effect in the next session.
+
+## Gotchas
+
+**Skills from plugins, other repos, or hand-written folders are silently skipped — this is not a bug.**
+The installer only recognises skill folders whose name matches a skill published in this repo. If the user expects "update my skills" to refresh a plugin-installed skill or one they wrote themselves, those will not appear in the output at all. Clarify scope before the user concludes that a non-repo skill "failed to update".
+
+**"Nothing was updated" does not mean the skill is already current — it may mean the metadata version was never bumped.**
+Update detection compares `metadata.version` in the installed skill against the repo's published value. If a skill was patched without incrementing that field, the installer sees no delta and reports it as current. If a user suspects a skill is stale despite the "up to date" message, ask them to check the `version` field in the installed `SKILL.md` against the repo's HEAD.
+
+**`npx` needs Node 18+; the script fallback does not — and the two compare against different sources.**
+Running `npx -y github:whobat/AI-Agent-skills` fetches and runs the latest repo via npm. Running `./install.ps1 -Update` or `./install.sh --update` compares against the *local clone*. If the local clone is behind HEAD, the script path will not offer newer versions — run `git pull` in the repo folder before using it as the fallback.
+
+**A preserved `config.json` can mask a new required config key added in the update.**
+The update keeps the existing `config.json` intact, so secrets are safe. But if the updated skill adds a new required key that does not exist in the preserved file, the skill will silently lack that value at runtime. After updating a skill that has a `config.json`, check its `config.example.json` (if present) for any keys not yet in the local copy.

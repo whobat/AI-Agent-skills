@@ -4,7 +4,7 @@ description: Diagnose performance problems in Microsoft Dynamics AX 2012 (incl. 
 license: MIT
 compatibility: Requires PowerShell 7+ and SQL Server VIEW SERVER STATE / VIEW DATABASE STATE permissions
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # AX 2012 SQL Performance Triage

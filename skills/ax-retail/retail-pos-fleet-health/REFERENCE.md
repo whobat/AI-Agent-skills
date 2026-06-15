@@ -84,3 +84,48 @@ Warning types, in ranking order: `unreachable`/`auth_failed`, `service_stopped`
   small and the agent reads details selectively from the file.
 - Unreachable hosts cost the WinRM timeout each; a list with many dead entries slows the
   sweep — prune the host list or lower the throttle impact by sweeping in batches.
+
+## Gotchas
+
+- **SQL Express 10 GB cap applies per database data file, not per instance — and log files
+  don't count.** `data_gb` in the output is the right measure; `log_gb` is reported
+  separately and does not count against the cap. A host whose instance holds two databases
+  at 5.5 GB each is two independent near-limit problems, not one 11 GB problem. Conversely,
+  a database with a large log file but a small `data_gb` is not near the cap. Always read
+  `data_gb` only when evaluating `express_db_near_limit` warnings.
+
+- **A stopped auto-start service on a POS can be correct — not every till is expected to be
+  running at sweep time.** Tills that are offline, closed for the day, or not yet opened
+  for trading may have their POS/Retail services deliberately stopped (e.g. stopped by the
+  POS shutdown procedure). Before escalating a `service_stopped` warning, confirm the
+  expected posture for that store and shift — a machine that is `service_stopped` plus
+  `unreachable` and outside trading hours is almost certainly powered down on schedule, not
+  faulted. Reserve escalation for machines that are reachable (i.e., the WinRM session
+  succeeded) but whose service is unexpectedly stopped.
+
+- **`unreachable` most often means the till is powered off, not broken.** WinRM on a POS
+  machine is only reachable when Windows is fully booted. Tills swept outside trading
+  hours, or those shut down between shifts, will appear as `unreachable` indistinguishably
+  from a machine with a WinRM misconfiguration or network fault. Cross-reference the
+  `hosts_failed` list with the store's trading schedule before treating `unreachable` as an
+  incident — a machine that was reachable in the prior sweep and is now unreachable at
+  3 AM is almost certainly off, not broken.
+
+- **A burst of recent errors after a reboot is normal noise, not an ongoing problem.**
+  `recent_errors.count` covers a fixed window (default 24 h). A till that rebooted
+  following a patch or power cycle will log a cluster of events at startup — drivers
+  initialising, services starting, network re-establishing — that can easily exceed the
+  `-ErrorCountWarn` threshold. Check `boot_time`: if the machine rebooted recently
+  (within the event window) and the `top_providers` are boot-phase sources (e.g. Service
+  Control Manager, disk/network drivers), treat the count as startup noise rather than a
+  live fault. A high count on a machine with a `boot_time` days in the past is the
+  signal that warrants triage.
+
+- **`ThrottleLimit` caps concurrency, so a fleet result is not a point-in-time snapshot.**
+  With `-ThrottleLimit 12` (the default), a 100-host sweep runs in ~9 sequential waves.
+  The first host and the last host are queried minutes apart. Do not compare absolute error
+  counts or disk figures across hosts as if they were collected simultaneously, and do not
+  assume a machine's absence from the `hosts_ok` list means it was reachable and clean —
+  it may simply have been in a later wave that hadn't started when you read partial output.
+  Always wait for the script to complete and parse the final JSON before drawing
+  fleet-wide conclusions.

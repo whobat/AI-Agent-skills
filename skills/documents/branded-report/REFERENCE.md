@@ -160,3 +160,45 @@ that begins directly with the content.
   pick a widely available family (Georgia, Arial, Calibri) or install the brand font.
 - **Page size** is A4. Change the `@page size` in `build_report.py`'s CSS for Letter.
 - The script writes only the files you ask for, into `--output-dir`. It changes nothing else.
+
+## Gotchas
+
+**`"status": "ok"` does not mean all three formats were produced.**
+When PDF is skipped (no browser found), the JSON output is still
+`{"status": "ok", "outputs": {"pdf": null, ...}}`. A null value in `outputs` is the only
+signal that a format was requested but not produced. Always inspect each key in `outputs`
+rather than checking `status` alone; the reason for the skip is printed to stderr.
+
+**HTML is always written to disk, even when `html` is not in `--formats`.**
+The script builds HTML unconditionally — it is the intermediate source for the PDF renderer.
+When `html` is absent from `--formats`, the path is removed from the reported `outputs` map
+but the `.html` file remains in `--output-dir`. This can leave a stale or unexpected file
+alongside the PDF. If the HTML is unwanted, delete it after the run.
+
+**DOCX font stacks are truncated to the first family name.**
+`docx_render.py` calls `font_value.split(",")[0]` to extract a font name from the theme's
+CSS stack (e.g. `"Calibri, sans-serif"` → `"Calibri"`). Word gets only that single name.
+If the font is not installed on the reader's machine, Word substitutes silently — there is
+no warning and the visual result may differ from the HTML/PDF. For maximum DOCX portability,
+set `fonts.heading` and `fonts.body` to a font that ships with Microsoft Office (Calibri,
+Cambria, Arial, Georgia).
+
+**DOCX table row banding is shifted one row compared with HTML/PDF.**
+The DOCX renderer shades rows where the 0-based row index `ri % 2 == 0`, which makes the
+header row (`ri=0`) and every second data row receive the `light` fill. The HTML renderer
+uses `tr:nth-child(even)`, which shades the opposite data rows. The alternating pattern is
+visually inverted between DOCX and HTML/PDF; this is inherent in the current renderers.
+There is no workaround short of hand-editing the DOCX after generation.
+
+**Raw HTML embedded in the Markdown body appears in HTML/PDF but is silently dropped in DOCX.**
+The DOCX walker dispatches only the Markdown-derived tags it knows (`p`, `h1`–`h6`, `table`,
+`ul`, `ol`, `pre`, `blockquote`, `hr`). Any raw HTML that the `markdown` library passes
+through — `<div>`, `<span>`, `<img>`, `<br>`, etc. — hits no handler and produces no output,
+without a warning. If the same source must render faithfully in all three formats, confine
+the Markdown to the constructs listed in the [Markdown support](#markdown-support) table.
+
+**`--url` theme extraction requires the same headless browser as PDF rendering.**
+`extract_theme_visual.py` screenshots the page via `chrome --headless` (or Edge/Chromium);
+if no browser is found it raises `SystemExit` immediately. A machine that cannot produce
+PDFs also cannot extract a theme from a URL. Use `--image` or `--pdf` as the visual source
+instead, or run the OOXML extractor (`extract_theme.py`) from an Office template.

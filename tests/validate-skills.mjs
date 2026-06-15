@@ -14,6 +14,8 @@
 // Repo conventions enforced (allowed by the spec via `metadata`):
 //   - license must be present (this is a public repo)
 //   - metadata.version must be present (the installers' update detection keys on it)
+//   - a "## Gotchas" section exists (in SKILL.md or REFERENCE.md) — domain pitfalls
+//     so agents don't repeat known misdiagnoses
 //
 // Exit code 0 = all valid; 1 = violations (printed per skill).
 'use strict';
@@ -113,6 +115,17 @@ for (const skillDir of skillDirs) {
     fail(name, 'metadata.version missing (installers key update detection on it)');
   } else if (!/^\d+\.\d+\.\d+$/.test(fm.metadata.version)) {
     fail(name, `metadata.version "${fm.metadata.version}" is not semver (x.y.z)`);
+  }
+
+  // repo convention: every skill documents its domain pitfalls in a "## Gotchas" section
+  // (in SKILL.md or, preferably for script-backed skills, REFERENCE.md) so agents don't
+  // repeat known misdiagnoses. Accept "## Gotchas" or "### Gotchas", optional trailing text.
+  const refMd = path.join(skillDir, 'REFERENCE.md');
+  const bodyForGotchas =
+    fs.readFileSync(skillMd, 'utf8') +
+    (fs.existsSync(refMd) ? '\n' + fs.readFileSync(refMd, 'utf8') : '');
+  if (!/^#{2,3}\s+Gotchas\b/im.test(bodyForGotchas)) {
+    fail(name, 'missing a "## Gotchas" section (in SKILL.md or REFERENCE.md) — document the domain pitfalls so agents don\'t repeat known misdiagnoses');
   }
 }
 

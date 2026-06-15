@@ -24,6 +24,11 @@ rejects anything that doesn't.
 3. Keep `SKILL.md` under 500 lines; put detail in `REFERENCE.md` (or `references/`),
    linked **one level deep** from SKILL.md. Scripts go in `scripts/` with tests next
    to them (`*.Tests.ps1` for Pester, `test_*.py` for Python).
+3b. **Add a `## Gotchas` section** (in `REFERENCE.md`, or `SKILL.md` for knowledge-only
+   skills) — `npm run validate` requires it. Document the *real* domain pitfalls:
+   measurement traps, errors that mislead about the cause, environment foot-guns, and
+   known misattributions. Each entry: **trap → mechanism → correct check/fix**. Keep it
+   honest and specific; don't pad to pass the check.
 4. If the skill needs runtimes or credentials, declare them in `skill.install.json`
    (see [README — Runtime requirements](README.md#runtime-requirements-skillinstalljson)).
 5. Add 3+ evaluation scenarios in `evals/<skill-name>.json` (see existing files for

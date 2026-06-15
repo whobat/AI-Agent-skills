@@ -40,3 +40,23 @@ Notes:
 - Fill all in-range empty weekdays in the current week, then `›` to the next week, wait, re-read, repeat.
 - **Skip**: Sat/Sun; public holidays in the user's locale; any weekday already showing hours (report these as "skipped — already had time").
 - Track progress and report at month boundaries. At the end, list every day registered (date+hours), every skip with reason, and the grand total. Flag ambiguous near-holidays (bridge days adjacent to an official holiday) — these are not official holidays so they get filled by default, but the user may want them removed.
+
+## Gotchas
+
+**The 7pace Bearer token and the ADO PAT are not interchangeable — using the wrong one fails silently or with a confusing error.**
+The script uses two credentials for two different jobs: the 7pace Bearer token (set up via `--auth`) is required for all worklog CRUD operations against `timehub.7pace.com`; the Azure DevOps PAT is only used by `--search` to query the ADO Work Items API. If `--search` returns a `401` or no results despite the work item existing, check that the ADO PAT is present in `~/.7pace/config.json` and has "Work Items (Read)" scope — the 7pace token alone will not authenticate ADO searches.
+
+**Re-running a range with `--no-skip-existing` creates duplicate worklogs — no overwrite protection.**
+By default, the script skips days that already have a worklog (`--skip-existing` is on). If you re-run a batch and pass `--no-skip-existing`, it creates a second entry on every already-logged day. To correct a logged day, use `--date <date> --list --json` to find the existing worklog `id`, then `--update <id> ...` to change it — do not re-create.
+
+**Work items can only be referenced by numeric ID — a name string passed to `--work-item` will fail or match incorrectly.**
+`--work-item` expects a numeric ADO work-item ID (e.g. `--work-item 12345`). If the user gives a name ("Website Redesign"), you must resolve it first with `--search "Website Redesign" --json`, confirm exactly one non-closed match, and use its `id`. Skipping the search step and guessing or fabricating an ID will silently attach the worklog to the wrong item.
+
+**`--update` resets the work item to the provided `--work-item` value — omitting it does not preserve the original.**
+When running `--update <worklog-id>`, always pass `--work-item <id>` explicitly. The SKILL.md workflow (step 4) warns about this specifically for holiday conversions: if you omit `--work-item`, the update may clear or reset the associated work item, corrupting the entry. Always fetch the current entry via `--list --json` first to confirm what you are modifying.
+
+**`today` and `yesterday` are resolved using the local machine's clock — a run near midnight can log to the wrong calendar date.**
+The date tokens `today` and `yesterday` expand to the machine's local date at the moment the script runs. A request made at 23:58 on a Monday and executed at 00:01 Tuesday will log to Tuesday. For any time-sensitive or cross-midnight scenario, pass an explicit `YYYY-MM-DD` date instead of a relative token.
+
+**Weekday tokens in `--hours` patterns must be English — locale names or abbreviations in other languages are rejected.**
+The range pattern parser recognises only the English tokens `mon tue wed thu fri sat sun` (or full English names). Tokens in other languages (e.g. `lun`, `lundi`, `ma`) will not match and the day will be silently omitted from the batch. Always translate user-supplied weekday names to English before constructing the `--hours` string.

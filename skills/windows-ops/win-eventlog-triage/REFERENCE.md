@@ -169,6 +169,64 @@ Fixes, in order of preference:
   per-host fetch runs remotely (server-side filtering); grouping/ranking happens
   locally after collection.
 
+## Gotchas
+
+These are interpretation and misdiagnosis traps — distinct from the known
+operational caveats above (Security-log level filtering, `MaxEvents` truncation,
+parallelism). Where those overlap, a cross-reference is noted.
+
+**High event counts are not severity — dominant noise providers will bury real
+issues.** Benign providers such as `Service Control Manager` event 7036
+(service state-change) or DCOM event 10016 can fire thousands of times and land
+at the top of `top_critical` by count. The ranking is
+Critical → Error → count → recency (see *Output schema*), so a high-count
+Error drowns out a single-occurrence Critical. Always check the full ranked
+list, not just rank-1. If a noisy provider is known-benign in your environment,
+add it to a `suppress_list` so it cannot pad the count.
+
+**A service crash plus its dependent failures is one incident, not many.**
+When a service terminates unexpectedly (event 7034), every service or application
+that depends on it typically logs its own Error immediately after. These appear
+as separate groups with separate counts, making a single root-cause look like a
+cluster. Correlate by `first_seen` timestamps and provider chain (Service Control
+Manager → dependent-app provider) before reporting the count of affected groups
+as independent problems. Report: "service X crashed, pulling down Y and Z" — not
+three distinct incidents.
+
+**Time-window inputs are operator-local; output timestamps are UTC — do not
+compare them directly.** `-Hours`, `-Since`, `-From`, and `-To` are resolved in
+the local time zone of the machine running the script, but every timestamp in
+the JSON output (`first_seen`, `last_seen`, `query.from`, `query.to`) is
+normalized to UTC with a `Z` suffix. If an operator on UTC+2 passes
+`-Since '2026-06-15T08:00'`, the `query.from` in the output reads
+`2026-06-15T06:00:00Z`. Comparing a server's local-time log viewer screenshot
+("event at 08:00") against the JSON `first_seen` will show a two-hour gap that
+is not a gap. Always convert to a common time zone before cross-referencing
+output with external sources (SIEM, tickets, screenshots from remote desktop).
+
+**A truncated host does not mean "no more events" — it means coverage was
+capped.** When `truncated: true` appears on a host, `Get-WinEvent` stopped at
+`-MaxEvents` (default 5000 per log) and events before that cut-off are simply
+absent from the output. The most *recent* events are returned first, so older
+events in the window are the ones silently dropped. Never state that a host
+showed "no issues before 03:00" when `truncated: true`; the data to support
+that claim was never collected. Surface the flag explicitly and narrow the
+window or raise `-MaxEvents` before drawing coverage conclusions. (Also noted
+in *Known caveats* — repeated here because it is the most common source of
+false-clean verdicts.)
+
+**`ProviderName` and the legacy `Source` field are not the same string —
+a wrong name silently returns zero events.** `Get-WinEvent -FilterHashtable
+@{ProviderName='...'}` matches against the ETW provider registration, which
+can differ from the source name shown in Event Viewer's legacy "Source" column
+(e.g., `Microsoft-Windows-Security-Auditing` vs `Security`). Passing the
+display-name string as a `ProviderName` filter will silently return nothing
+rather than erroring. If a targeted filter via `-Logs` plus a manual
+`Get-WinEvent` call yields an unexpectedly empty result, verify the exact
+registered provider name with
+`(Get-WinEvent -ListProvider '*<keyword>*').Name` before concluding the log
+is clean.
+
 ## Testing
 
 ```powershell

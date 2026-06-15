@@ -111,6 +111,58 @@ Decisions in NAV 2009 that pay off at migration time:
 - Flag as **migration debt** during reviews: modified posting codeunits, custom code keyed to
   Classic-client behavior (e.g. form triggers doing business logic), direct SQL access.
 
+## Gotchas
+
+**A FlowField value is garbage until you CALCFIELDS it — and it can never be part of a key or used in CALCSUMS.**
+FlowFields (`SumIndexFields` / `FlowFilter` types such as Balance, Qty. on Order) are not stored columns;
+the field variable holds whatever was last in memory (often 0) until `Rec.CALCFIELDS(FieldName)` executes.
+This silently produces wrong totals when you reference the field directly without calling CALCFIELDS first.
+Additionally, FlowFields cannot appear in table keys or be used as the target field in `CALCSUMS` — both
+require stored, indexed fields. Correct approach: call `CALCFIELDS` on only the fields you need, outside
+loops where possible, and use `CALCSUMS` on the underlying SumIndexField (a regular Decimal field with
+`MaintainSIFTIndex = Yes`) for set-level aggregation.
+
+**Adding or enabling a SumIndexField on a hot table is a posting-speed change, not just a schema change.**
+Every enabled key with `MaintainSIFTIndex = Yes` becomes an SQL indexed view; every INSERT/MODIFY/DELETE on
+the base table must maintain it synchronously. Adding a new SumIndexField to `Item Ledger Entry` or
+`Value Entry` to satisfy one FlowField can measurably slow down posting for all documents. The inverse
+applies: SIFT views nobody reads are pure write overhead. Before enabling a new SumIndexField, verify it
+is actually read (Client Monitor or the nav2009-sql-performance triage); before disabling one, verify
+nothing calls `CALCSUMS` or a FlowField that depends on it.
+
+**`COMMIT` inside a posting codeunit makes partial posts irrecoverable.**
+NAV's posting chain (CU 80, CU 90, CU 12, and everything they call) relies on a single implicit
+transaction: if any step fails after a `COMMIT`, only the post-COMMIT work rolls back — the pre-COMMIT
+ledger entries and G/L entries are already permanent. The result is a half-posted document that no NAV
+tool can automatically reverse. `COMMIT` is also a write-lock escalation point: it releases locks, then
+the next statement re-acquires them — creating a window for another session to insert a conflicting row.
+The only valid use for `COMMIT` inside a batch is after a self-contained, independently safe unit (e.g.
+a progress-checkpoint in a long re-coding batch), never mid-posting.
+
+**Reading a record and then modifying it without LOCKTABLE risks the "Another user has modified" error.**
+NAV's optimistic-update check compares a record's field values at MODIFY time against what is in the
+database. If another session wrote the row between your FIND and your MODIFY, NAV raises a runtime error
+and rolls back. The fix is `Rec.LOCKTABLE` (which escalates the table to UPDLOCK / HOLDLOCK scope) before
+the FIND that seeds the modification — not after. Placing LOCKTABLE after the FIND leaves the same race
+window open. Acquire LOCKTABLE in a consistent order across all code paths that touch the same tables to
+avoid deadlocks.
+
+**`SETCURRENTKEY` picks the access path — it does not add a filter and it does not guarantee uniqueness.**
+A common mistake is writing `Rec.SETCURRENTKEY(DocumentNo, LineNo)` and assuming NAV will only return rows
+matching those values, or that the result set will be distinct. `SETCURRENTKEY` is purely a hint for which
+SQL index to use; the actual row selection is still controlled by `SETRANGE`/`SETFILTER` calls. Omitting
+the SETRANGE means a full table scan in key order, not a filtered lookup. Separately: if the chosen key
+does not actually exist in the table's key list, NAV 2009 falls back silently to the primary key —
+no error, but the index intended for performance is not used.
+
+**UI-bearing C/AL that works on the Classic client silently fails or errors on the RTC service tier and NAS.**
+`MESSAGE`, `CONFIRM`, `STRMENU`, `RUNMODAL` on a Form, client-side `FILE.OPEN`/`DOWNLOAD`, and
+Automation objects that instantiate a COM server all require a client process. On the RTC service tier
+(which executes the C/AL behind Pages and web services) and on NAS there is no client — these calls either
+raise a runtime error or are swallowed depending on the call. Guard every UI call with `IF GUIALLOWED THEN`
+and move file paths to server-accessible shares or XMLport streams. Code intended for NAS must be validated
+without any client present; use the Classic Debugger to confirm `GUIALLOWED` returns FALSE in your test path.
+
 ## Useful diagnostics (NAV 2009 toolbox)
 
 - **Client Monitor** (Classic: Tools → Debugger → Client Monitor): per-call client-side trace —

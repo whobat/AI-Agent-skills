@@ -3,7 +3,7 @@ name: nav2009-permissions-security
 description: Expert guidance on the Microsoft Dynamics NAV 2009 security and permissions model — diagnosing "you do not have permission to Read/Insert/Modify/Delete/Execute" errors, designing role-based access via NAV Roles (Permission Sets), understanding object permissions (Read, Insert, Modify, Delete, Execute, indirect), security filters for record-level access control, Windows vs Database login modes, and NAV↔SQL login/permission synchronization including the Standard vs Enhanced SQL security models. Use when a user hits a "you do not have permission" error in NAV 2009, when designing or auditing Roles for Sales/Purchasing/Finance/Posting-only users, when a NAV user cannot log in or records are invisible, when setting up security filters by Responsibility Center or company, or when troubleshooting NAV↔SQL login synchronization.
 license: MIT
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # NAV 2009 Permissions & Security

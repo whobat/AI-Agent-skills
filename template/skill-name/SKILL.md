@@ -27,12 +27,23 @@ What the script prints (JSON shape, exit codes), and what goes to a file vs stdo
 2. Lead with what matters; don't recite everything.
 3. Fail loud: name every coverage gap, skipped section, or unverified assumption.
 
+## Gotchas
+
+REQUIRED (validator-enforced; may live here or in REFERENCE.md). The *real*,
+mechanism-level pitfalls of this domain — the traps that produce confident-but-wrong
+conclusions. For each: **the trap → why it happens → the correct check/fix.** Cover
+measurement traps (a tool/command that reports a misleading value), errors that point
+at the wrong cause, environment foot-guns, and known misattributions. Keep it honest and
+specific — a few verifiable gotchas beat a padded list. Add to it when a real run uncovers
+a new pitfall.
+
 ## Errors
 
 Known failure modes → what to tell the user.
 
 <!--
 Checklist before opening a PR (see CONTRIBUTING.md):
+- [ ] Has a "## Gotchas" section (here or in REFERENCE.md) — validator-enforced
 - [ ] Lives in a category folder: skills/<category>/<name>/ ; new category -> add it to .claude-plugin/plugin.json
 - [ ] Skill's own folder name == frontmatter name (lowercase, hyphens), globally unique
 - [ ] description ≤ 1024 chars, includes when-to-use triggers

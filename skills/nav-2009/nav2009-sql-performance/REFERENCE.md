@@ -110,6 +110,71 @@ NAV 2009 talks to SQL Server through its own driver (NDBCS). Two consequences sh
 | `database`: 1 tempdb data file, many cores | tempdb allocation contention (PAGELATCH on 2:1:x) | Standard advice: multiple equal tempdb data files |
 | Trace flag check | — | TF **4136** (disable parameter sniffing) was commonly recommended for NAV; note its presence/absence, don't push it blindly |
 
+## Gotchas
+
+Traps that lead to a confident-but-wrong conclusion when reading a DMV snapshot through a
+NAV 2009 lens.
+
+**A `missing_indexes` suggestion is not a `CREATE INDEX` instruction.**
+The optimizer knows only that the query would benefit from a column combination — it has no
+knowledge of NAV's object model. Creating the index directly in SQL (e.g. via SSMS) will work
+until NAV next touches the table: a key change, a new company, or a schema synchronisation
+silently drops or rebuilds all indexes on that table, and your hand-crafted index disappears
+without error. The correct path is to open the table in C/SIDE and add or adjust a **NAV key**
+with `MaintainSQLIndex = Yes` covering the same fields. Use a raw SQL index only as an
+acknowledged, documented stopgap while the C/SIDE change is arranged.
+
+**DMV aggregates for a company-prefixed table represent only that one company's data.**
+NAV stores each company's data in its own set of tables named `CompanyName$Table Name` (e.g.
+`CRONUS$Item`, `CRONUS$G/L Entry`). `top_queries`, `missing_indexes`, `unused_indexes`, and
+`largest_tables` all surface rows per physical table. If `missing_indexes` shows a suggestion
+on `CRONUS$Item` and the instance hosts five companies, the same logical gap exists in
+`OtherCo$Item`, `ThirdCo$Item`, etc. — those will have their own DMV rows, or may not appear
+at all if those companies haven't run the same workload yet. Never read a finding on one
+company's table as a complete picture of the schema problem; check sibling tables before
+concluding scope.
+
+**Write pressure and locking on a `$VSIFT$` view traces to SIFT maintenance, not the base table.**
+NAV SIFT keys are implemented as SQL Server indexed views (`dbo.CompanyName$VSIFT$KeyName`).
+Every `INSERT`, `UPDATE`, or `DELETE` on the base table (e.g. `CRONUS$G/L Entry`) causes SQL
+Server to maintain all covering indexed views in the same transaction and under the same locks.
+If `waits` shows `LCK_M_*` or `WRITELOG` pressure that the `top_queries` section can't explain
+from the base-table statements alone, check the `sift` section for large or numerous VSIFT
+views on that table. The locking is happening inside the view-maintenance step, not on a slow
+base-table query. The fix is in C/SIDE: turn `MaintainSIFTIndex = No` on SIFT keys nobody
+reads (cross-reference `unused_indexes` for the corresponding view).
+
+**A `FETCH API_CURSOR` head blocker in `blocking` is a user/process problem, not an index problem.**
+The Classic NAV client keeps a server-side cursor open for the lifetime of a form or a posting
+session. If that session is mid-transaction — a user paused on a posting dialog, or a batch
+job holding locks between rows — it will appear in `blocking` as a `FETCH API_CURSOR`
+statement with a long `wait_time`. The instinct is to tune the underlying query; that changes
+nothing, because the cursor is already past the read phase and is blocking because it holds
+row/page locks acquired earlier in the transaction. The correct action is to identify the
+`login_name` and `host_name` from the blocking row and contact or kill that session — the fix
+is operational, not index-related.
+
+**Cumulative DMV counters after a recent instance restart make `unused_indexes` and `waits` unreliable.**
+`dm_os_wait_stats`, `dm_db_index_usage_stats`, and `dm_exec_query_stats` all reset to zero on
+every SQL Server restart. If `server.system.sqlserver_start_time` is recent (hours or a few
+days), the `unused_indexes` section may flag indexes as unread simply because the workload
+hasn't cycled through all its paths yet — a month-end job, a rarely-run report, or a posting
+run that hasn't happened since the restart. Similarly, a wait-type ranking built on two hours
+of uptime will over-represent whatever happened to run in that window. Always state the uptime
+window before drawing conclusions from cumulative sections, and treat `unused_indexes`
+findings as provisional until the instance has been up through at least one full business cycle.
+
+**High cursor execution count in `top_queries` is normal NAV behaviour — judge by reads per execution, not by count.**
+The Classic NAV client driver (NDBCS) issues every record-set operation as a server-side
+dynamic cursor: `sp_cursoropen` followed by repeated `sp_cursorfetch` / `FETCH API_CURSOR`
+calls. A `FINDSET` loop over 10 000 rows produces 10 000+ individual fetch executions, each
+cheap. In `top_queries` these accumulate to enormous `execution_count` figures that look
+alarming next to a modern application's set-based queries. The metric that matters is
+`avg_logical_reads` (logical reads per execution): a cursor fetch with 2–5 logical reads is
+working correctly against a good key; the same fetch with 500–5 000 reads points to a missing
+or mismatched key. Flag the reads-per-execution outliers; ignore high counts unless they are
+accompanied by elevated per-execution cost.
+
 ### What the script can NOT see
 
 Be explicit about these gaps instead of overreaching:
