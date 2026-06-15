@@ -4,7 +4,7 @@ description: 7pace Time Tracker (Azure DevOps) — create/edit/delete worklogs i
 license: MIT
 compatibility: Requires Python 3.8+ and network access to the 7pace Timetracker / Azure DevOps REST APIs
 metadata:
-  version: "1.0.4"
+  version: "1.0.5"
 ---
 
 # 7pace Time Tracker

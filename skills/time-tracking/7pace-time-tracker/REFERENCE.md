@@ -60,3 +60,50 @@ The date tokens `today` and `yesterday` expand to the machine's local date at th
 
 **Weekday tokens in `--hours` patterns must be English — locale names or abbreviations in other languages are rejected.**
 The range pattern parser recognises only the English tokens `mon tue wed thu fri sat sun` (or full English names). Tokens in other languages (e.g. `lun`, `lundi`, `ma`) will not match and the day will be silently omitted from the batch. Always translate user-supplied weekday names to English before constructing the `--hours` string.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+This is an ACTION skill — it creates, updates, and deletes 7pace worklogs. The steps below prevent double-logging on re-runs and confirm that every write actually landed.
+
+### BEFORE writing — establish state and preconditions
+
+1. **List existing worklogs for the target day or range first.**
+   ```
+   python SCRIPT --date 2026-04-09 --list --json                         # single day
+   python SCRIPT --from 2026-04-01 --to 2026-04-30 --list --json         # range
+   ```
+   Review the output before issuing any create/update/delete. If entries already exist for the target days, decide whether to update them (using their `id`) or skip — do not re-create and do not pass `--no-skip-existing` without an explicit reason, as that produces duplicates.
+
+2. **Resolve a work-item NAME to its numeric ID before logging.**
+   If the user supplied a name rather than an ID (e.g. "your-org Website Redesign"), run:
+   ```
+   python SCRIPT --search "Website Redesign" --json
+   ```
+   Confirm exactly one non-closed match and use its numeric `id`. Never fabricate or guess an ID — the API accepts any integer and will silently attach the worklog to the wrong item.
+
+3. **Confirm the right credential is active.**
+   Run a dry-run health check to verify which token is in use before any write:
+   ```
+   python SCRIPT --date today --hours 0 --dry-run --json     # expect status: dry_run
+   ```
+   The 7pace Bearer token (from `~/.7pace/config.json`) is required for all worklog CRUD operations against `timehub.7pace.com`. The Azure DevOps PAT is only used by `--search`. A `401` on `--search` means the ADO PAT is missing or lacks "Work Items (Read)" scope — the 7pace Bearer token alone will not authenticate ADO searches.
+
+### OUTPUT verification — confirm writes landed correctly
+
+After every create, update, or delete, re-list the affected day or range and verify:
+
+```
+python SCRIPT --date 2026-04-09 --list --json          # or --from/--to for a range
+```
+
+Check all of the following:
+
+- **Expected entries exist** — every target date has a worklog on the intended work item (ID `12345` or your-org equivalent) with the correct hours.
+- **Hours match** — the `length` field reflects what was requested (e.g. `7.5` for 7:30, `7.0` for 7:00).
+- **No duplicates** — each target date appears exactly once; two entries on the same day for the same work item is always a bug.
+- **Deletes are gone** — a deleted worklog must not appear in the re-list.
+- **Date boundary is correct** — if the run happened near midnight, confirm the entry landed on the intended calendar date (not one day off). Use an explicit `YYYY-MM-DD` if there is any doubt.
+
+**Fail loud if the API reported `status: ok` but the re-list does not match.** Report the discrepancy and do not mark the task done until the re-list is clean.

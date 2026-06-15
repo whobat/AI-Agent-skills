@@ -107,6 +107,85 @@ or dead-letter messages in the async client. Fixing SQL on the channel server (a
 indexes, killing sessions) treats symptoms. Check Commerce Data Exchange session/job status
 on the HQ side first; the channel DB SQL findings are the consequence, not the cause.
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+A snapshot is only as trustworthy as its access and scope. Before drawing any conclusion —
+and again after applying a fix — work through this checklist.
+
+### Before recommending anything: confirm the snapshot is trustworthy
+
+**VIEW SERVER STATE present.**
+Check `server.errors` and `database.errors` in the JSON for `permission denied` on system
+views. An empty section (zero rows) means *nothing found*, not *access denied* — but a
+missing section or an error key means the data was never collected. If VIEW SERVER STATE was
+absent, re-run with a login that has it; don't interpret a snapshot taken without it.
+
+**Correct database scoped.**
+The AX transaction database and the Retail channel database have distinct workload profiles
+and different expected findings (RCSI, bloat tables, CDX tables). Confirm `database.name`
+in the snapshot matches the database you intended to triage. A snapshot collected against
+the wrong database (e.g., the model store, `tempdb`, or a reporting replica) will produce
+misleading findings.
+
+**RCSI state and instance restart time noted.**
+Read `database.is_read_committed_snapshot_on` and `server.system.sqlserver_start_time`
+before interpreting any other section. RCSI OFF invalidates the blocking and wait analysis
+(see Gotchas). A recent restart shrinks the cumulative counter window — waits, query stats,
+and missing-index suggestions all reflect only the uptime since the last restart. State both
+values explicitly at the top of your analysis.
+
+**Bloat-table findings understood as AX cleanup-routine targets.**
+When `largest_tables` is dominated by `INVENTSUMLOGTTS`, `SYSDATABASELOG`,
+`BATCHJOBHISTORY`, `AIFMESSAGELOG`, or `EVENTINBOX`, record the row counts and sizes as a
+baseline before any action — these numbers confirm that cleanup routines are overdue and
+give you a before/after reference. Do not recommend SQL-level truncation (see Gotchas).
+
+**Capture a baseline.**
+Note the top-3 wait types (with totals), the top query by total reads, any blocking head
+blockers, and the largest tables with their sizes. This baseline is the benchmark for the
+output verification step below.
+
+### Output verification: confirm the AX-side fix moved the metric
+
+AX fixes go through the AOT or supported cleanup routines — not raw SQL. After applying any
+change, re-run the full snapshot (same `-Sections all`, same database) and compare against
+the baseline captured above.
+
+**AOT index sync.**
+After adding or adjusting an AOT index and running a database synchronisation, re-run the
+snapshot and confirm: (a) the index appears in the SQL catalog (verify via SSMS or
+`sys.indexes`, not the DMV alone), (b) the `missing_indexes` entry for that table/column
+set has dropped or its estimated impact has decreased, and (c) the relevant query's
+`total_logical_reads` in `top_queries` has measurably fallen. If the query still shows the
+same read count, the synchronisation may not have completed or the AOT change was
+incorrect — fail loud.
+
+**Cleanup job.**
+After running a bloat-table cleanup routine (batch job history, database log, AIF log,
+etc.), re-run `largest_tables` and confirm the affected table has shrunk. If it has not,
+the cleanup job may have run against a different date range or encountered an error — check
+the batch job log in AX before concluding the problem is resolved.
+
+**RCSI toggle.**
+After enabling RCSI (`ALTER DATABASE … SET READ_COMMITTED_SNAPSHOT ON`), re-run `waits`
+and `blocking`. The `LCK_M_S` / `LCK_M_IS` share-lock waits should drop substantially.
+If they do not, RCSI may not have taken effect (check `database.is_read_committed_snapshot_on`
+= `1` in the new snapshot) or a separate locking root cause exists.
+
+**Re-sample transient blocking.**
+Blocking chains captured in a single snapshot are a point-in-time picture; they may not
+recur. After a fix, collect at least two snapshots during the same business activity
+(posting run, MRP batch, POS peak hour) before declaring blocking resolved. If the head
+blocker SPID changes but blocking persists, a systemic cause (long transactions, number
+sequence contention) remains — do not close the finding on a single clean sample.
+
+**Fail loud on partial coverage.**
+If any section in the post-fix snapshot is missing, errored, or covers a shorter uptime
+window than the baseline (e.g., instance was restarted between runs), state this explicitly.
+Do not claim a metric improved if the before and after snapshots are not comparable.
+
 ## What the script can NOT see
 
 - **X++ call sites** — SQL statement text usually identifies the table and pattern, but

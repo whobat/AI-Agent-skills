@@ -173,3 +173,72 @@ to assume the session is a full developer session when it is not. Always verify 
 license before starting a deployment: **Tools → License Information** — confirm the
 Granule list includes the development granule (Granule 11110 or equivalent) before
 attempting export, `.txt` import, or compile.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+Run through these steps for every import or compile operation — in order. Fail loud at each gate; do not continue if a gate fails.
+
+### BEFORE changes — baseline and preconditions
+
+**1. Confirm a backup exists.**
+Schema-changing imports (any table whose field layout differs) trigger a synchronization that can permanently delete column data if the Force option is chosen. Before touching the database, verify a backup taken today exists and is restorable. Reference the `nav2009-db-maintenance` skill. Do not proceed until the backup is confirmed.
+
+**2. Confirm the right license tier.**
+Open **Tools → License Information** in the Classic client:
+- Developer license (Granule 11110 or equivalent) required for: `.txt` import, `.txt`/`.fob` export, Compile (F11).
+- End-user license sufficient for: `.fob` import only.
+
+If the required granule is missing, stop and load the correct license (Tools → License Information → Change) before continuing.
+
+**3. Record the current object state (read-only SQL baseline).**
+Before importing, capture `Date`, `Time`, and `Version List` for every object you are about to touch. This is the proof of what changed:
+
+```sql
+-- Run BEFORE import; save the output as your baseline
+SELECT [Type], [ID], [Name], [Compiled], [Date], [Time], [Version List]
+FROM dbo.[Object]
+WHERE [Type] IN (1,2,3,4,5,6,7,8)
+  AND [ID] IN (<comma-separated IDs>);
+-- Replace <comma-separated IDs> with the actual object IDs.
+-- Type values: 1=Table 2=Form 3=Report 4=Dataport 5=Codeunit 6=XMLport 7=MenuSuite 8=Page
+```
+
+Save this result set — you will compare it against the post-import state.
+
+### OUTPUT verification — after import and compile
+
+**4. Compile all affected objects.**
+- `.fob` import: objects arrive compiled, but recompile any object whose dependencies changed.
+- `.txt` import: objects arrive **uncompiled** — compilation is mandatory. In Object Designer, filter on the imported IDs (or filter `Compiled = No`), mark all rows, press **F11**. Do not skip this step; uncompiled objects produce C/AL runtime errors the moment they are called.
+
+Fix each compile error before moving on — compile errors stop at the first problem per object.
+
+**5. Verify via SQL that Date/Time/Version List changed as expected.**
+Re-run the same query used in step 3 and compare:
+
+```sql
+-- Run AFTER import + compile; compare against your baseline
+SELECT [Type], [ID], [Name], [Compiled], [Date], [Time], [Version List]
+FROM dbo.[Object]
+WHERE [Type] IN (1,2,3,4,5,6,7,8)
+  AND [ID] IN (<comma-separated IDs>);
+```
+
+Expected results:
+- `Date` and `Time` reflect the import timestamp (or the source object's stamp for `.fob`).
+- `Version List` carries the expected customization tag(s).
+- `Compiled = 1` for every row.
+
+**6. Confirm no objects are left uncompiled.**
+This query must return zero rows before the deployment is considered done:
+
+```sql
+SELECT [Type], [ID], [Name] FROM dbo.[Object]
+WHERE [Compiled] = 0 AND [Type] > 0;
+```
+
+If any rows appear: identify which objects failed to compile, fix the C/AL errors, recompile, and re-run this query until the result set is empty.
+
+**Fail loud.** If any gate above fails — missing backup, wrong license, compile errors, uncompiled objects remaining, or `Version List` not matching the expected tag — stop and report the failure explicitly. Do not declare the deployment complete until all six steps pass.

@@ -16,6 +16,8 @@
 //   - metadata.version must be present (the installers' update detection keys on it)
 //   - a "## Gotchas" section exists (in SKILL.md or REFERENCE.md) — domain pitfalls
 //     so agents don't repeat known misdiagnoses
+//   - a "## Verification" section exists — how to verify correctness before changes
+//     and how to verify the output afterward
 //
 // Exit code 0 = all valid; 1 = violations (printed per skill).
 'use strict';
@@ -126,6 +128,11 @@ for (const skillDir of skillDirs) {
     (fs.existsSync(refMd) ? '\n' + fs.readFileSync(refMd, 'utf8') : '');
   if (!/^#{2,3}\s+Gotchas\b/im.test(bodyForGotchas)) {
     fail(name, 'missing a "## Gotchas" section (in SKILL.md or REFERENCE.md) — document the domain pitfalls so agents don\'t repeat known misdiagnoses');
+  }
+  // repo convention: every skill documents how to verify correctness BEFORE changes and
+  // how to verify the OUTPUT afterward, in a "## Verification" section.
+  if (!/^#{2,3}\s+Verification\b/im.test(bodyForGotchas)) {
+    fail(name, 'missing a "## Verification" section (in SKILL.md or REFERENCE.md) — document how to verify correctness before changes and how to verify the output');
   }
 }
 

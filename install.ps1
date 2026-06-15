@@ -222,15 +222,22 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
   foreach ($c in $candidates) {
     $srcDir = Resolve-SkillSource $skillsSrc $c.Name
     $tp = Join-Path $dest $c.Name
-    # Preserve user secrets that live inside the skill dir (configs normally live elsewhere).
+    # Preserve user secrets (config.json) and per-skill local learnings (gotchas.local.md)
+    # that live inside the skill dir, so an update never wipes them.
     $saved = Join-Path $tp 'config.json'
     $keep = $null
     if (Test-Path $saved) { $keep = Get-Content $saved -Raw }
+    # Preserve gotchas.local.md by EXISTENCE, not content, so an empty local file survives too.
+    $savedG = Join-Path $tp 'gotchas.local.md'
+    $hasG = Test-Path $savedG
+    $keepG = if ($hasG) { Get-Content $savedG -Raw } else { $null }
     Remove-Item $tp -Recurse -Force
     Copy-Item $srcDir $tp -Recurse
     Get-ChildItem $tp -Recurse -Include 'config.json' -File | Remove-Item -Force
+    Get-ChildItem $tp -Recurse -Include 'gotchas.local.md' -File | Remove-Item -Force
     Get-ChildItem $tp -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
     if ($null -ne $keep) { Set-Content -Path $saved -Value $keep -NoNewline }
+    if ($hasG) { Set-Content -Path $savedG -Value ([string]$keepG) -NoNewline }
     Write-Host "  updated $($c.Name) -> $($c.To)"
     Resolve-Requirements (Join-Path $tp 'skill.install.json')
   }
@@ -285,8 +292,9 @@ foreach ($f in $folders) {
     Write-Host "  linked $($f.Name) -> $targetPath$note"
   } else {
     Copy-Item $f.FullName $targetPath -Recurse
-    # Never install real secrets
+    # Never install real secrets or stray local learnings (those are created during use)
     Get-ChildItem $targetPath -Recurse -Include 'config.json' -File | Remove-Item -Force
+    Get-ChildItem $targetPath -Recurse -Include 'gotchas.local.md' -File | Remove-Item -Force
     Get-ChildItem $targetPath -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
     Write-Host "  installed $($f.Name) -> $targetPath$note"
   }

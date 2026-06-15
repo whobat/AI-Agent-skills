@@ -179,9 +179,10 @@ function installSkill(name, destDir, symlink) {
     console.log(`  linked  ${name} -> ${dest}${note}`);
   } else {
     fs.cpSync(src, dest, { recursive: true });
-    // never install real secrets / caches
+    // never install real secrets / caches / stray local learnings (created during use)
     fs.rmSync(path.join(dest, 'config.json'), { force: true });
     rmAll(dest, 'config.json');
+    rmAll(dest, 'gotchas.local.md');
     rmAll(dest, '__pycache__');
     console.log(`  copied  ${name} -> ${dest}${note}`);
   }
@@ -428,11 +429,16 @@ async function updateOutdated(destDir, chosenNames, autoYes) {
     const dest = path.join(destDir, c.name);
     const cfg = path.join(dest, 'config.json');
     const keep = fs.existsSync(cfg) ? fs.readFileSync(cfg) : null;
+    // per-skill local learnings (env-specific gotchas) must survive updates too
+    const gl = path.join(dest, 'gotchas.local.md');
+    const keepG = fs.existsSync(gl) ? fs.readFileSync(gl) : null;
     fs.rmSync(dest, { recursive: true, force: true });
     fs.cpSync(skillSource(c.name), dest, { recursive: true });
     rmAll(dest, 'config.json');
+    rmAll(dest, 'gotchas.local.md');
     rmAll(dest, '__pycache__');
     if (keep !== null) fs.writeFileSync(cfg, keep);
+    if (keepG !== null) fs.writeFileSync(gl, keepG);
     console.log(`  updated ${c.name} -> ${c.to}`);
     await ensureRequirements(dest, autoYes);
   }

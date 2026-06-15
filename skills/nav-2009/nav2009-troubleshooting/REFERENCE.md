@@ -227,6 +227,65 @@ When `finsql.exe` imports objects and the subsequent compile step fails, users o
 **"The Job Queue stopped processing" is usually an NST/NAS instance issue, not an application-level problem.**
 When Job Queue entries stop being picked up, the first place users look is the entries themselves — status, schedule, recurrence. But if *all* entries have stopped simultaneously, the NAS Windows service has almost certainly stopped or crashed. Check `Get-Service *Nav*` on the NAS host and the Windows Application Event Log before touching any Job Queue entries in the application. Resetting entries to "Ready" while the NAS service is down has no effect. → **win-eventlog-triage** on the NAS host; → **nav2009-service-tier-admin** to restart.
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+---
+
+## Verification
+
+Use this section **before** routing to another skill and **after** the routed skill's fix is applied.
+
+### Before acting on a diagnosis — confirm the suspected cause is real
+
+A fast triage match ("RTC can't connect → NST is down") is a hypothesis, not a fact. Confirm it before
+routing anyone to take action or before changing anything:
+
+1. **Reproduce the symptom right now.** Have the user (or yourself) repeat the exact failing action —
+   same client, same menu path, same record. If you cannot reproduce it, the incident may have
+   self-resolved; do not proceed with invasive changes.
+
+2. **Check the obvious discriminators first:**
+   - *Fails in RTC only, works in Classic?* → the problem is in the Service Tier or the 3-tier
+     delegation path, not the SQL layer. Route to **nav2009-service-tier-admin** or
+     **nav2009-permissions-security** (Kerberos/SPN), not **nav2009-sql-performance**.
+   - *Fails in both RTC and Classic?* → SQL Server, database, or license/permission issue at the
+     data tier.
+   - *One user only, not all users?* → workstation, user account, NAV Role, or client config. Not a
+     service or network problem.
+   - *All users simultaneously?* → NST/NAS service, network, SQL Server, or database availability.
+   - *"Permission" error — license or role?* → open Tools → License Information and confirm the
+     granule exists before editing any Role. (See Gotchas: "A permission error may be a license
+     limit.")
+   - *Posting error — blocking or C/AL logic?* → run `sys.dm_exec_requests` /
+     `sys.dm_os_waiting_tasks` to check for a blocking head blocker before touching posting code.
+
+3. **Capture current state before any change:**
+   - Pull the Windows Application Event Log now (→ **win-eventlog-triage**) so the entries exist
+     before a restart clears them.
+   - Note the exact error text, error number, and time of the failure.
+   - Record which services are up/down (`Get-Service *Nav*`), which database is targeted, and the
+     NAV build number (Help → About or the NST binary version).
+
+Only after steps 1–3 have confirmed the suspected cause should you route to the specialist skill.
+
+### After the fix — verify the original symptom is gone
+
+The goal is not "a related service is now running" — it is "the specific action that was failing now
+succeeds." Work through this sequence after every routed fix:
+
+1. **Re-run the exact failing action** that triggered the incident. Same client, same user (if
+   possible), same menu path or record. Not a different operation that "should work the same way."
+2. **Confirm the error is absent**, not just that the service started. NST restarted ≠ RTC connects.
+   SQL login added ≠ user can post. Run `Test-NetConnection <NST> -Port 7046` after an NST fix; try
+   an actual login after a permissions fix; try the posting after a locking fix.
+3. **Check for new errors introduced by the fix.** A changed `CustomSettings.config` might fix one
+   port and break an SOAP endpoint; a recompile might fix one object and expose a compile error in
+   another.
+4. **Fail loud if you cannot confirm.** If the user who experienced the error is unavailable to
+   re-test, or if the failing action requires a specific data state you cannot recreate, say so
+   explicitly rather than declaring success. "The NST service is running" is not the same as "the
+   original symptom is resolved."
+
 ---
 
 ## When to use which skill

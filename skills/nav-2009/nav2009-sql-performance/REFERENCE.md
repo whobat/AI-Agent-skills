@@ -175,6 +175,8 @@ working correctly against a good key; the same fetch with 500–5 000 reads poin
 or mismatched key. Flag the reads-per-execution outliers; ignore high counts unless they are
 accompanied by elevated per-execution cost.
 
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
 ### What the script can NOT see
 
 Be explicit about these gaps instead of overreaching:
@@ -187,3 +189,66 @@ Be explicit about these gaps instead of overreaching:
   especially are point-in-time / short-history).
 - **Which C/AL object issued a statement.** Statement text + table names usually narrow it down;
   Client Monitor or SQL Profiler with application-name filtering closes the gap.
+
+## Verification
+
+This skill is **read-only diagnosis**. Verification has two phases: confirming the snapshot is
+trustworthy before drawing conclusions, and confirming a NAV-side change actually worked after
+it is deployed.
+
+### Before recommending anything — confirm the snapshot is trustworthy
+
+Do not interpret findings until all four checks pass:
+
+1. **Permissions present.** Both `VIEW SERVER STATE` and `VIEW DATABASE STATE` must be available.
+   An empty section (e.g. `waits: { status: ok, data: [] }`) means the query ran and found
+   nothing — that is a real result. A section with `status: error` containing "permission denied"
+   means the data is missing entirely, not that the metric is zero. Name every errored/skipped
+   section explicitly before proceeding; do not fill gaps with assumptions.
+
+2. **Right database scoped.** Confirm `database` in the top-level JSON matches the NAV production
+   database you intend to analyse. The `database` section's `name` and `compatibility_level`
+   fields double-check this. If `-Database` was omitted, all DB-scoped sections report `skipped`
+   — that is expected but must be stated; never treat `skipped` as "nothing to see".
+
+3. **Instance restart time noted (DMVs are cumulative).** Read `server.system.sqlserver_start_time`
+   first. All cumulative sections — `waits`, `top_queries`, `unused_indexes`,
+   `dm_exec_query_stats` — reflect the period from that timestamp to `generated_at`. State this
+   window at the top of your analysis ("DMVs cover approx. 14 days since last restart"). If the
+   window is short (hours to a few days), flag `unused_indexes` and `waits` as provisional; the
+   workload may not have cycled through all its paths yet.
+
+4. **Company-prefixed table findings understood as per-company.** A finding on
+   `CompanyA$G/L Entry` does not represent all companies. If the instance hosts multiple
+   companies, sibling tables (`CompanyB$G/L Entry`, etc.) will have their own DMV rows — or none
+   at all if that company has not run the relevant workload since the last restart. Before
+   concluding the scope of a missing-index or fragmentation finding, check whether sibling tables
+   show the same pattern or are absent.
+
+**Capture a baseline.** Record `generated_at`, `sqlserver_start_time`, and the top-3 wait types
+(with their % share) before any change. This is the baseline to compare against after a fix.
+
+### After a NAV-side change — confirm it worked
+
+NAV 2009 changes are made **in C/SIDE and compiled there**, not in raw SQL. The verification
+loop is:
+
+1. Make the change in C/SIDE (key added/adjusted, `MaintainSQLIndex`/`MaintainSIFTIndex`
+   toggled, C/AL loop restructured).
+2. **Compile and synchronise** the object in C/SIDE (Object Designer → Compile; for key changes,
+   also run Schema Synchronisation or Table Synchronisation). Confirm no sync errors.
+3. **Re-run the snapshot** after the workload has had time to exercise the changed path. For
+   index-usage changes, the relevant queries must execute at least once after the compile; for
+   wait and blocking fixes, re-sample during a representative load window.
+4. **Compare against the baseline**: the target metric (avg_logical_reads on the flagged
+   statement, LCK_M_* wait share, blocking chain depth) should have improved. If it has not
+   moved, the compiled change did not affect the path you diagnosed — re-examine which C/AL
+   object issues the statement (Client Monitor or SQL Profiler with app-name filter).
+5. **Transient blocking: re-sample before acting.** A single `blocking` snapshot proves a chain
+   existed at that instant, not that it is chronic. If you cannot reproduce blocking on a second
+   snapshot taken during the same load window, treat the first sighting as provisional and
+   monitor before recommending a structural change.
+
+**Fail loud on partial coverage.** If a section was `error` or `skipped` in the before-snapshot,
+note it in the after-snapshot too. Do not claim the fix resolved "all issues" if sections were
+unavailable — state exactly which metrics were verified and which remain unconfirmed.

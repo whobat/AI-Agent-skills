@@ -129,3 +129,46 @@ Warning types, in ranking order: `unreachable`/`auth_failed`, `service_stopped`
   it may simply have been in a later wave that hadn't started when you read partial output.
   Always wait for the script to complete and parse the final JSON before drawing
   fleet-wide conclusions.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+These steps are read-only — run them before acting on sweep results and after any fix.
+
+### Before acting on results: establish coverage and baseline
+
+- **Confirm which tills were unreachable and why.** Cross-reference `hosts_failed` with
+  the store trading schedule: a till that is unreachable outside its trading window is
+  almost certainly powered off on schedule, not broken. A till that is unreachable *during*
+  trading hours, or that was reachable in the previous sweep and is now not, is the one
+  that warrants action. Do not treat the two categories the same.
+
+- **Check for throttle-sampling skew.** If `-ThrottleLimit` was set lower than the
+  default, or the sweep was interrupted and restarted, the result set may not cover the
+  full fleet evenly. Verify `query.hosts_total` matches the host list you intended before
+  drawing fleet-wide comparisons. A partial sweep is only valid for the hosts it reached.
+
+- **Know the expected per-store service posture.** Before judging any `service_stopped`
+  warning, confirm what services are expected to be running at the time of the sweep for
+  that store (trading/non-trading, open/closed shift). Build a reference of the normal
+  fleet state — which services run on which machine types, which tills are expected online
+  at which times — so that deviations stand out clearly from expected posture.
+
+### Output verification: confirm persistent problems and cleared fixes
+
+- **Re-sweep a flagged till before dispatching anyone.** A single sweep result can reflect
+  a transient condition (a reboot in progress, a brief WinRM timeout, a startup burst).
+  Run the script against the specific host (`-ComputerName <till>`) after a short wait and
+  confirm the warning is still present in the second result. A warning that disappears on
+  re-sweep is transient noise; one that persists is a real signal.
+
+- **After a fix, re-run the sweep for that till and confirm it cleared.** Do not mark a
+  problem resolved based on a verbal report or a service restart alone. Re-sweep the host,
+  parse the JSON, and verify the relevant warning type is absent from `summary.warnings`
+  for that machine before closing the incident.
+
+- **Fail loud on unreachable hosts — never report them as healthy.** An unreachable host
+  produces no service, disk, SQL, or event data. It must appear in your report as
+  `unreachable` (or `auth_failed`), not as a host with no warnings. Omitting failed hosts
+  from the summary gives a false impression of fleet health.

@@ -101,3 +101,29 @@ Trap: if the login running the script has VIEW SERVER STATE denied (common on sh
 
 **`query_hash` and `plan_hash` are different things — confusing them leads to wrong conclusions about parameterization and plan reuse.**
 Trap: `sys.dm_exec_query_stats` exposes both `query_hash` (same for all executions of logically identical queries regardless of literal values) and `plan_hash` (same only when the compiled plan is also identical). An agent that groups by `plan_handle` or treats each row as a distinct query will see dozens of rows for the same logical SELECT with different literal constants — inflating the count of "distinct queries" and missing the real culprit: a single unparameterized query generating a plan-cache storm (thousands of single-use plans). Conversely, one `query_hash` with many distinct `plan_hash` values signals parameter sniffing or plan instability, not many different queries. Correct check: when the top-queries list is suspiciously long with similar statement text, group by `query_hash` to collapse parameterization variants; then compare distinct `plan_hash` counts per `query_hash` to diagnose sniffing vs. cache bloat.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+## Verification
+
+This skill collects a **read-only snapshot**. Before acting on or recommending anything from the output, confirm the snapshot is trustworthy and complete.
+
+### Snapshot trustworthiness (before analysis)
+
+**Confirm VIEW SERVER STATE is present.** Check `server.permissions` in the JSON. An empty `waits`, `top_queries`, or `blocking` section does not mean the server is healthy — it may mean the querying login could only see its own rows. The "Without VIEW SERVER STATE" gotcha above explains why. If the permission is absent, stop and request the grant before drawing any conclusions.
+
+**Confirm you are on the right instance and database.** Read `server.system.server_name` and `database.name` from the output and verify they match what the user reported. Named instances and aliases are common sources of misdirection.
+
+**Note `sqlserver_start_time` before reading cumulative sections.** Wait stats, plan-cache totals, and index-usage counters in `waits`, `top_queries`, `missing_indexes`, and `unused_indexes` all accumulate since the last service restart. A 4-hour-old restart means totals span 4 hours; a 3-week-old restart means they span 3 weeks. State this window explicitly before interpreting any of those sections — a dominant wait type from three weeks ago may no longer be relevant today.
+
+**Surface any `error` or `skipped` sections immediately.** A `partial` top-level status means at least one section failed. Name the failed sections and explain what is unknown as a result before continuing. Do not silently skip them.
+
+**Capture a baseline.** Record the key metrics from this first run (top wait types, top query by CPU/reads, blocking chain heads, tempdb file count, `max server memory`) so that any follow-up run has a concrete before-state to compare against.
+
+### Output verification (before recommending actions)
+
+**Re-sample transient conditions.** Blocking and live waits are point-in-time. If `blocking` is empty but `LCK_M_*` dominates the wait stats, re-run `-Sections blocking` two or three times in rapid succession before concluding there is no blocking — see the blocking gotcha above.
+
+**Cross-check at least one finding a second way before acting.** Examples: a missing-index suggestion should be confirmed by inspecting `sys.indexes` on the same table for existing near-duplicates; a high-CPU query should be verified against its avg-per-execution, not only its total; a wait type dominating the cumulative stats should be plausible given the `sqlserver_start_time` window.
+
+**After a change is made, re-run the snapshot and confirm the metric improved.** If the user acts on a finding — creates an index, adjusts `max server memory`, kills a blocking session — re-run the relevant sections and compare the new output to the baseline. A metric that did not move means the root cause was elsewhere. Fail loud: do not declare the issue resolved unless the numbers confirm it.

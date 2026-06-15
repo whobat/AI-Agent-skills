@@ -28,7 +28,14 @@ rejects anything that doesn't.
    skills) — `npm run validate` requires it. Document the *real* domain pitfalls:
    measurement traps, errors that mislead about the cause, environment foot-guns, and
    known misattributions. Each entry: **trap → mechanism → correct check/fix**. Keep it
-   honest and specific; don't pad to pass the check.
+   honest and specific; don't pad to pass the check. **Committed gotchas must be generic
+   (no company-specific data).** Tell the agent to read/append a gitignored
+   `gotchas.local.md` for environment-specific learnings (it survives updates).
+3c. **Add a `## Verification` section** — `npm run validate` requires it. Document (1) how
+   to verify correctness/preconditions **before** making changes (baseline, repro,
+   health-check; for read-only skills, how to confirm ground truth and coverage), and
+   (2) how to verify the **output/result** afterward (re-check, confirm the effect, fail
+   loud if unconfirmed).
 4. If the skill needs runtimes or credentials, declare them in `skill.install.json`
    (see [README — Runtime requirements](README.md#runtime-requirements-skillinstalljson)).
 5. Add 3+ evaluation scenarios in `evals/<skill-name>.json` (see existing files for

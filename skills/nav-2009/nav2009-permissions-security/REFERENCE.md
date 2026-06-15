@@ -280,3 +280,22 @@ Trap: a consultant assigned to `SUPER` tries to open an object from an unlicense
 Why it happens: SUPER is implemented as a wildcard permission record (Object ID = 0) on every object type — it grants Read/Insert/Modify/Delete/Execute on all *licensed* objects. The license check is a separate, earlier gate that SUPER has no effect on. The NAV security model is layered: license → permission → security filter. SUPER collapses the permission layer to nothing but cannot collapse the license layer.
 
 Correct approach: when a SUPER user cannot access an object, check the license first (Tools → License Information), exactly as you would for any other user. If the granule is missing, the fix is a license upgrade — Role changes, including adding or modifying SUPER, will not help.
+
+---
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
+
+---
+
+## Verification
+
+### Before changing permissions: establish the real cause and capture a baseline
+
+1. **Confirm license vs permission first.** Read the exact error text the user sees — "Your program license does not permit access to table/object X" and "You do not have permission to Read/Insert/Modify/Delete/Execute X" require completely different fixes. Do not touch Roles until you have confirmed which layer is failing (see § The two layers: license vs permissions).
+2. **Capture the user's current effective access as a baseline.** Before editing any Role or login record, open the user's Role list (Tools → Security → Windows Logins / Database Logins → select user → Roles) and note every assigned Role. For each Role relevant to the failing object, note the current right values and any security filter. This baseline lets you diff what you changed and revert cleanly if the fix introduces regressions.
+
+### After a change: sync, then confirm with a real test
+
+1. **Run "Synchronize All Logins" before testing** (Enhanced security setups only): navigate to Database → Logins → Synchronize All Logins. NAV's application-layer check reflects the new Role assignment immediately, but SQL-level enforcement does not update until sync runs. Testing before sync can give a false positive (RTC user passes; Classic user still fails).
+2. **Verify with the affected user or an equivalent test login.** Have the user (or a test account carrying the same Roles) perform the exact action that was blocked — not just navigate to the object, but execute the failing operation. Confirm the exact error is gone.
+3. **Confirm you did not over-grant.** After the fix, check that the user cannot access objects or records beyond their job function: spot-check a record they should *not* see (security filter scenarios) and an object they should *not* be able to execute. If you cannot confirm with a real test, say so explicitly — do not report the fix as verified.

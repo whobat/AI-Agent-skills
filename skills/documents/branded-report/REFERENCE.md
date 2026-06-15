@@ -161,6 +161,23 @@ that begins directly with the content.
 - **Page size** is A4. Change the `@page size` in `build_report.py`'s CSS for Letter.
 - The script writes only the files you ask for, into `--output-dir`. It changes nothing else.
 
+## Verification
+
+**BEFORE generating — confirm preconditions:**
+
+- **Theme file present and sane.** Confirm `theme.json` exists at the path passed to `--theme`. Open it and eyeball the brand colors, fonts, and logo paths. Themes produced by visual extraction (`extract_theme_visual.py`) are approximate — check that the colors look like the brand identity before committing to a full run.
+- **Logo paths resolve.** Verify that the `logo` and `logo_raster` paths in `theme.json` actually exist on disk (relative to the theme file's folder). A missing logo silently falls back to an organization-name wordmark for DOCX and produces no image on the cover for HTML/PDF.
+- **Headless browser available for PDF.** If `pdf` is in `--formats`, confirm that Chrome/Edge/Chromium is discoverable (`chrome --version`, `chromium --version`, or the standard install locations). If no browser is found, PDF will be silently skipped with `"pdf": null` in the output — it is better to know this up front than to discover it after a long run.
+- **Fonts installed for the renderer.** The PDF renderer embeds fonts from the build machine. If the theme names a non-standard brand font (not Georgia, Arial, Calibri, etc.), verify it is installed before running; otherwise the browser substitutes silently and the PDF will not match the intended typography.
+
+**OUTPUT verification — after generation, inspect every requested format:**
+
+- **Parse `outputs`, not just `status`.** A `"status": "ok"` result does not mean every format was produced. Check each key in `outputs`: a `null` value means that format was requested but not produced. The reason is on stderr — surface it rather than reporting success.
+- **Confirm each path exists on disk.** Even a non-null path in `outputs` should be verified to be a real, non-empty file before reporting to the user.
+- **Spot-check DOCX vs HTML for known divergences.** Open the DOCX and check: (a) the heading font is the expected family (Word silently substitutes missing fonts); (b) table row banding direction may be visually inverted compared with HTML/PDF (this is a known renderer difference); (c) any raw HTML embedded in the Markdown body is silently dropped in DOCX — confirm key content is present.
+- **Confirm logo and colors rendered.** On the cover page, verify the logo image appears (not just an organization-name wordmark) and that the `primary` color band is visible. A missing or wrong-path logo is a common silent failure.
+- **Fail loud.** If a requested format is missing or a required asset is absent, report the gap explicitly — do not summarize the run as successful.
+
 ## Gotchas
 
 **`"status": "ok"` does not mean all three formats were produced.**
@@ -202,3 +219,5 @@ the Markdown to the constructs listed in the [Markdown support](#markdown-suppor
 if no browser is found it raises `SystemExit` immediately. A machine that cannot produce
 PDFs also cannot extract a theme from a URL. Use `--image` or `--pdf` as the visual source
 instead, or run the OOXML extractor (`extract_theme.py`) from an Office template.
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.

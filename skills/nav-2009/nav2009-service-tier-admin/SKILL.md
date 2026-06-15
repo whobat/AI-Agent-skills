@@ -4,7 +4,7 @@ description: Inventory and administer Microsoft Dynamics NAV 2009 Service Tiers 
 license: MIT
 compatibility: Requires PowerShell 7+; local admin on the NST host, or CIM/WinRM admin access for remote inventory
 metadata:
-  version: "1.0.2"
+  version: "1.0.3"
 ---
 
 # NAV 2009 Service Tier Admin

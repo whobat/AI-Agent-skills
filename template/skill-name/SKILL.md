@@ -35,7 +35,22 @@ conclusions. For each: **the trap → why it happens → the correct check/fix.*
 measurement traps (a tool/command that reports a misleading value), errors that point
 at the wrong cause, environment foot-guns, and known misattributions. Keep it honest and
 specific — a few verifiable gotchas beat a padded list. Add to it when a real run uncovers
-a new pitfall.
+a new pitfall. **Committed gotchas must be generic — no company-specific data.**
+
+**Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md`
+in this skill's folder if it exists — it holds traps learned in *this* environment (real
+server/DB names, local quirks). When you discover a new environment-specific pitfall,
+**append it there**, not to this file. `gotchas.local.md` is gitignored and is preserved
+across skill updates, so the skill gets more useful every time it's used here.
+
+## Verification
+
+REQUIRED (validator-enforced; may live here or in REFERENCE.md). Document two things:
+1. **Before changes** — how to verify correctness/preconditions first: a baseline, a repro,
+   a health-check, or (for read-only skills) how to confirm ground truth and coverage before
+   recommending anything. Never propose a change without a before-check.
+2. **Output** — how to verify the result afterward: re-run the check, confirm the expected
+   effect landed, and **fail loud** if it can't be confirmed. Never report "done" unverified.
 
 ## Errors
 
@@ -44,6 +59,8 @@ Known failure modes → what to tell the user.
 <!--
 Checklist before opening a PR (see CONTRIBUTING.md):
 - [ ] Has a "## Gotchas" section (here or in REFERENCE.md) — validator-enforced
+- [ ] Has a "## Verification" section (before-change check + output check) — validator-enforced
+- [ ] Tells the agent to read/append gotchas.local.md for env-specific learnings
 - [ ] Lives in a category folder: skills/<category>/<name>/ ; new category -> add it to .claude-plugin/plugin.json
 - [ ] Skill's own folder name == frontmatter name (lowercase, hyphens), globally unique
 - [ ] description ≤ 1024 chars, includes when-to-use triggers

@@ -153,10 +153,13 @@ new_fixture
 mkdir -p "$AGENT_DIR/alpha-skill"
 legacy_frontmatter alpha-skill 0.9.0 > "$AGENT_DIR/alpha-skill/SKILL.md"
 printf '{"keep":"me"}' > "$AGENT_DIR/alpha-skill/config.json"
+printf '' > "$AGENT_DIR/alpha-skill/gotchas.local.md"  # empty local file
 run_installer --agent claude --skill beta-skill --yes
 out_contains "update offered/applied" "alpha-skill: 0.9.0 -> 1.0.0"
 check "SKILL.md updated to 1.0.0" "grep -qF 'version: \"1.0.0\"' \"\$AGENT_DIR/alpha-skill/SKILL.md\""
 check "config.json preserved" '[ "$(cat "$AGENT_DIR/alpha-skill/config.json")" = "{\"keep\":\"me\"}" ]'
+# even an empty local file must survive (preserved by existence, not content)
+check "empty gotchas.local.md preserved" '[ -f "$AGENT_DIR/alpha-skill/gotchas.local.md" ]'
 
 if HOME="$FAKE_HOME" bash -c 'command -v python || command -v python3 || command -v py' >/dev/null 2>&1; then
   echo "- warnOnly requirement missing: warns but install succeeds"
