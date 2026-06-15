@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Pester 5 tests for Invoke-RdsProfileTriage.ps1
 #   Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser
-#   Invoke-Pester -Path ./Invoke-RdsProfileTriage.Tests.ps1 -Output Detailed
+#   Invoke-Pester -Path ./skills/windows-ops/rds-profile-triage/scripts/Invoke-RdsProfileTriage.Tests.ps1 -Output Detailed
 #
 # Covers the deterministic, remoting-free helpers — especially the two pieces of
 # logic that exist to stop the misdiagnoses this skill was born from:
@@ -34,6 +34,10 @@ Describe 'Resolve-TimeWindow' {
   It '-Since overrides -Hours' {
     $w = Resolve-TimeWindow -Hours 24 -Since ([datetime]'2026-06-10T00:00:00') -Now $now
     $w.From | Should -Be ([datetime]'2026-06-10T00:00:00')
+  }
+  It 'swaps an inverted -From/-To so From is never later than To' {
+    $w = Resolve-TimeWindow -From ([datetime]'2026-06-10') -To ([datetime]'2026-06-01') -Now $now
+    $w.From | Should -Be ([datetime]'2026-06-01'); $w.To | Should -Be ([datetime]'2026-06-10')
   }
   It '-From/-To win outright' {
     $w = Resolve-TimeWindow -From ([datetime]'2026-06-01') -To ([datetime]'2026-06-02') -Now $now

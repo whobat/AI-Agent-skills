@@ -94,10 +94,13 @@ function Read-ServerList {
 # Resolve the look-back window to [from,to] in local time. -From/-To win, then -Since, then -Hours.
 function Resolve-TimeWindow {
   param([int]$Hours = 24, [datetime]$Since, [datetime]$From, [datetime]$To, [datetime]$Now = (Get-Date))
-  if ($From -and $To) { return @{ From = $From; To = $To } }
-  if ($From) { return @{ From = $From; To = $Now } }
-  if ($Since) { return @{ From = $Since; To = $Now } }
-  return @{ From = $Now.AddHours(-[math]::Abs($Hours)); To = $Now }
+  $r = if ($From -and $To) { @{ From = $From; To = $To } }
+  elseif ($From) { @{ From = $From; To = $Now } }
+  elseif ($Since) { @{ From = $Since; To = $Now } }
+  else { @{ From = $Now.AddHours(-[math]::Abs($Hours)); To = $Now } }
+  # Never hand Get-WinEvent an inverted window — swap if From is later than To.
+  if ($r.From -gt $r.To) { $r = @{ From = $r.To; To = $r.From } }
+  $r
 }
 
 # Classify the owner of a profile-failure event so the agent does not misattribute it.
@@ -265,7 +268,7 @@ function ConvertTo-CompactReport {
 # Returns one PSCustomObject. Self-contained: no outer functions referenced.
 # ===========================================================================
 $RemoteCollector = {
-  param([datetime]$From, [datetime]$To, [int]$TempSampleSize, [int]$MaxMessageLength, [string]$CredUserName)
+  param([datetime]$From, [datetime]$To, [int]$TempSampleSize, [int]$MaxMessageLength, [string]$CredUserName, [int]$MaxCorruptListed)
 
   function U([datetime]$d) { $d.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
   function Trunc([string]$s, [int]$n) { if ($null -eq $s) { return $null }; $s = ($s -split "`r?`n")[0]; if ($s.Length -gt $n) { $s.Substring(0, $n) + '...' } else { $s } }
@@ -366,7 +369,7 @@ $RemoteCollector = {
     roaming_profile   = [pscustomobject]@{ machine_profile_path_raw = $rawPath; value_kind = $kind; rds_wf_profile_path = $wfPath; note = 'RAW value — %USERNAME% intentionally NOT expanded.' }
     hive_leak         = [pscustomobject]@{ loaded_user_hives = $loadedHives; active_sessions = $activeSessions; leaked = [math]::Max(0, $loadedHives - $activeSessions) }
     temp_profiles     = [pscustomobject]@{ count = $tempDirs.Count; sample = @($tempSample) }
-    profilelist       = [pscustomobject]@{ total = @($entries).Count; empty_path = @($corrupt | Where-Object reason -like '*empty*').Count; bak = @($corrupt | Where-Object reason -like '*bak*').Count; temp_pointing = @($corrupt | Where-Object reason -like '*temp*').Count; corrupt = @($corrupt) }
+    profilelist       = [pscustomobject]@{ total = @($entries).Count; empty_path = @($corrupt | Where-Object reason -like '*empty*').Count; bak = @($corrupt | Where-Object reason -like '*bak*').Count; temp_pointing = @($corrupt | Where-Object reason -like '*temp*').Count; corrupt = @(@($corrupt) | Select-Object -First $MaxCorruptListed); corrupt_listed_capped = (@($corrupt).Count -gt $MaxCorruptListed) }
     profile_events    = @($peGroups)
     winrm_host_launch = [pscustomobject]@{ dcom10000_wsmprovhost = $dcom; winrm86 = $winrm86; failing = (($dcom + $winrm86) -gt 0) }
   }
@@ -377,7 +380,7 @@ $RemoteCollector = {
 # Reads via StdRegProv; no folder enumeration / no event log.
 # ===========================================================================
 function Invoke-DcomCollector {
-  param([string]$Computer, [pscredential]$Cred)
+  param([string]$Computer, [pscredential]$Cred, [int]$MaxCorruptListed = 20)
   $opt = New-CimSessionOption -Protocol Dcom
   $cs = New-CimSession -ComputerName $Computer -Credential $Cred -SessionOption $opt -ErrorAction Stop
   try {
@@ -399,7 +402,7 @@ function Invoke-DcomCollector {
       uptime_hours      = [math]::Round(((Get-Date).ToUniversalTime() - $os.LastBootUpTime.ToUniversalTime()).TotalHours, 1)
       drain             = [pscustomobject]@{ mode = (RegDw 'SYSTEM\CurrentControlSet\Control\Terminal Server' 'TSServerDrainMode'); state_text = $null; accepting_logons = $null }
       roaming_profile   = [pscustomobject]@{ machine_profile_path_raw = $rawPath; value_kind = 'ExpandString(assumed)'; rds_wf_profile_path = $null; note = 'RAW via StdRegProv (no expansion). DCOM mode: reduced dataset.' }
-      profilelist       = [pscustomobject]@{ total = $corruptInfo.total; empty_path = $corruptInfo.empty_path; bak = $corruptInfo.bak; temp_pointing = $corruptInfo.temp_pointing; corrupt = $corruptInfo.corrupt }
+      profilelist       = [pscustomobject]@{ total = $corruptInfo.total; empty_path = $corruptInfo.empty_path; bak = $corruptInfo.bak; temp_pointing = $corruptInfo.temp_pointing; corrupt = @(@($corruptInfo.corrupt) | Select-Object -First $MaxCorruptListed); corrupt_listed_capped = (@($corruptInfo.corrupt).Count -gt $MaxCorruptListed) }
       hive_leak         = $null; temp_profiles = $null; profile_events = @(); fslogix = $null
       winrm_host_launch = $null
       dcom_note         = 'WinRM unavailable -> reduced CIM/DCOM collection. hive_leak/temp_profiles/events not collected. If profilelist shows corruption, that alone often explains the WinRM host-launch failure.'
@@ -436,11 +439,11 @@ $icmCommon = @{ Credential = $Credential; Authentication = $Authentication; Erro
 $hostResults = foreach ($h in $hosts) {
   try {
     if ($Protocol -eq 'Dcom') {
-      $data = Invoke-DcomCollector -Computer $h -Cred $Credential
+      $data = Invoke-DcomCollector -Computer $h -Cred $Credential -MaxCorruptListed $MaxCorruptListed
     }
     else {
       $data = Invoke-Command @icmCommon -ComputerName $h -ScriptBlock $RemoteCollector `
-        -ArgumentList $win.From, $win.To, $TempSampleSize, $MaxMessageLength, $Credential.UserName
+        -ArgumentList $win.From, $win.To, $TempSampleSize, $MaxMessageLength, $Credential.UserName, $MaxCorruptListed
     }
     $obj = [pscustomobject]@{ computer = $h; status = 'ok'; error = $null; hint = $null }
     foreach ($p in $data.PSObject.Properties) { if ($p.Name -notin 'computer') { $obj | Add-Member -NotePropertyName $p.Name -NotePropertyValue $p.Value -Force } }
