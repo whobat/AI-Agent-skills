@@ -227,16 +227,17 @@ function Update-OutdatedSkills($dest, $skillsSrc, $chosenNames) {
     $saved = Join-Path $tp 'config.json'
     $keep = $null
     if (Test-Path $saved) { $keep = Get-Content $saved -Raw }
+    # Preserve gotchas.local.md by EXISTENCE, not content, so an empty local file survives too.
     $savedG = Join-Path $tp 'gotchas.local.md'
-    $keepG = $null
-    if (Test-Path $savedG) { $keepG = Get-Content $savedG -Raw }
+    $hasG = Test-Path $savedG
+    $keepG = if ($hasG) { Get-Content $savedG -Raw } else { $null }
     Remove-Item $tp -Recurse -Force
     Copy-Item $srcDir $tp -Recurse
     Get-ChildItem $tp -Recurse -Include 'config.json' -File | Remove-Item -Force
     Get-ChildItem $tp -Recurse -Include 'gotchas.local.md' -File | Remove-Item -Force
     Get-ChildItem $tp -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force
     if ($null -ne $keep) { Set-Content -Path $saved -Value $keep -NoNewline }
-    if ($null -ne $keepG) { Set-Content -Path $savedG -Value $keepG -NoNewline }
+    if ($hasG) { Set-Content -Path $savedG -Value ([string]$keepG) -NoNewline }
     Write-Host "  updated $($c.Name) -> $($c.To)"
     Resolve-Requirements (Join-Path $tp 'skill.install.json')
   }

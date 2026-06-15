@@ -146,13 +146,13 @@ Describe 'install.ps1' {
         New-Item -ItemType Directory -Force $pre | Out-Null
         Set-Content (Join-Path $pre 'SKILL.md') "---`nname: alpha-skill`nversion: 0.9.0`ndescription: old`n---`n"
         Set-Content (Join-Path $pre 'config.json') '{"keep":"me"}' -NoNewline
-        Set-Content (Join-Path $pre 'gotchas.local.md') 'my env note' -NoNewline
+        Set-Content (Join-Path $pre 'gotchas.local.md') '' -NoNewline  # empty local file
         $r = Invoke-Installer $fx @('-Agent', 'claude', '-Skill', 'beta-skill', '-Yes')
         $r.Out | Should -Match 'alpha-skill: 0\.9\.0 -> 1\.0\.0'
         Get-Content (Join-Path $pre 'SKILL.md') -Raw | Should -Match 'version: "1\.0\.0"'
         Get-Content (Join-Path $pre 'config.json') -Raw | Should -Be '{"keep":"me"}'
-        # per-skill local learnings survive the update too
-        Get-Content (Join-Path $pre 'gotchas.local.md') -Raw | Should -Be 'my env note'
+        # per-skill local learnings survive the update too — even an empty file (preserved by existence)
+        Join-Path $pre 'gotchas.local.md' | Should -Exist
     }
 
     It '-Update refreshes installed skills only, preserving config; second run is up to date' {

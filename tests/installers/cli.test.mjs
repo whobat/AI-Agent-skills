@@ -171,15 +171,15 @@ test('updates an outdated installed skill, preserving its config.json', () => {
   // Pre-install alpha-skill v0.9.0 with a user config inside the skill dir
   write(agentDir(fx), 'alpha-skill/SKILL.md', legacyFrontmatter('alpha-skill', '0.9.0'));
   write(agentDir(fx), 'alpha-skill/config.json', '{"keep":"me"}');
-  write(agentDir(fx), 'alpha-skill/gotchas.local.md', '# local\nmy env note');
+  write(agentDir(fx), 'alpha-skill/gotchas.local.md', '');  // empty local file must still survive (existence, not content)
   const r = run(fx, ['--agent', 'claude', '--skill', 'beta-skill', '--yes']);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /alpha-skill: 0\.9\.0 -> 1\.0\.0/);
   const installedMd = fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'SKILL.md'), 'utf8');
   assert.match(installedMd, /version: "1\.0\.0"/);
   assert.equal(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'config.json'), 'utf8'), '{"keep":"me"}');
-  // per-skill local learnings survive the update too
-  assert.equal(fs.readFileSync(path.join(agentDir(fx), 'alpha-skill', 'gotchas.local.md'), 'utf8'), '# local\nmy env note');
+  // per-skill local learnings survive the update too — even an empty file (preserved by existence)
+  assert.ok(fs.existsSync(path.join(agentDir(fx), 'alpha-skill', 'gotchas.local.md')), 'empty gotchas.local.md must survive update');
 });
 
 test('unconfigured: prints credential setup help', () => {
