@@ -4,7 +4,7 @@ description: Diagnose performance problems in Microsoft Dynamics NAV 2009 (Navis
 license: MIT
 compatibility: Requires PowerShell 7+ and SQL Server VIEW SERVER STATE / VIEW DATABASE STATE permissions
 metadata:
-  version: "1.0.3"
+  version: "1.0.4"
 ---
 
 # NAV 2009 SQL Performance Triage

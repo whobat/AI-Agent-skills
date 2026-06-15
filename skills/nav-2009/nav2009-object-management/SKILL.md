@@ -4,7 +4,7 @@ description: Guide export, import, and compilation of Microsoft Dynamics NAV 200
 license: MIT
 compatibility: Requires the Microsoft Dynamics NAV 2009 Classic client (with an appropriate license) on the machine where the manual steps are performed; SQL Server access for the verification query
 metadata:
-  version: "2.0.0"
+  version: "2.0.1"
 ---
 
 # NAV 2009 Object Management

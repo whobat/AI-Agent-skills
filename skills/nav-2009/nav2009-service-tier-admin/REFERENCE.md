@@ -157,3 +157,60 @@ With `-OutFile`, stdout carries a compact summary:
 5. After restarting, verify `restart.ok = true` and `restart.after = Running`. If `ok = false`,
    check Windows Application and System Event Logs on the target for service-start failures
    (common causes: SQL Server unreachable, certificate not found, port already in use).
+
+## Gotchas
+
+**CustomSettings.config edits are silently ignored until the service restarts.**
+Trap: an administrator edits a key (e.g. changes `DatabaseName` or a port), saves the file, and
+tests connectivity — the change has no effect. Why: the NST reads CustomSettings.config once at
+startup and caches every value in memory; the running process never re-reads the file. Correct
+check: after any config edit, compare the value you wrote with what the script reports in
+`settings.*` — if they differ, the service has not been restarted yet. Use `-Restart` (with user
+confirmation) to apply the change.
+
+**Multiple NST instances on one box each own a separate CustomSettings.config — editing the wrong
+file is invisible.**
+Trap: a box runs two instances (`DynamicsNAV` and `NAVTEST`). An admin opens the first
+CustomSettings.config that Explorer finds, edits it, restarts one service — the intended instance
+is unaffected. Why: R2 multi-instance layout places each instance's config under
+`...\Service\Instances\<InstanceName>\CustomSettings.config`; the binaries in `...\Service\` are
+shared but each instance's config directory is independent. Correct check: read `configPath` from
+the script's JSON for the specific instance before editing; confirm the instance name in the file's
+path matches the target instance.
+
+**A wrong or missing SQL login for the service account surfaces as a service start failure, not a
+NAV client error.**
+Trap: the service account (`account` field in the output) is changed, or the SQL Server login is
+dropped/roles are removed, and the tier fails to start. The Windows Service Control Manager logs
+"The service did not respond to the start or control request in a timely fashion" — no NAV-level
+error is shown because the NST never reaches the point of accepting connections. Why: the NST
+validates the SQL connection synchronously during startup; if the login is missing or the account
+lacks `db_owner` (or the NAV-required fixed roles) on the target database, the process exits
+before binding any ports. Correct check: confirm the service account has a SQL Server login, that
+the login is mapped to the database named in `settings.DatabaseName`, and that it holds the
+necessary database roles — then retry the start and watch the Application Event Log on SRV01 for
+`Microsoft.Dynamics.Nav.Server` source entries.
+
+**Running NAS / Job Queue on more than one NST instance against the same database causes jobs to
+execute twice.**
+Trap: a second NST instance is stood up for load testing or failover with `nas.enabled = true` and
+`NASServicesStartupCodeunit = 450`, pointing at the same NAV database. Both instances pick up
+the same Job Queue entries and run them concurrently. Why: NAV 2009 Job Queue locking is advisory
+— each NAS instance polls the Job Queue table independently and can claim the same entry if the
+first lock is not visible in time. There is no built-in singleton guard across instances. Correct
+check: in a multi-instance inventory, confirm that at most one instance per database has
+`nas.enabled = true`; if more than one does, disable `NASServicesStartupCodeunit` in
+CustomSettings.config for all but the designated NAS instance and restart those services.
+
+**A non-Windows credential type requires a certificate in the service account's certificate store;
+a missing or inaccessible cert silently prevents the service from starting.**
+Trap: `ClientServicesCredentialType` is set to `NavUserPassword` or `AccessControlService` and
+`ServicesCertificateThumbprint` is populated, but the service fails to start after a host rebuild
+or service-account change. The config file looks correct. Why: the NST loads the certificate by
+thumbprint from the `LocalMachine\My` store (or the service account's personal store, depending on
+deployment) at startup; if the certificate was not imported on the new host, or the service account
+does not have private-key read permission on it, the process cannot bind the TLS endpoint and
+exits. Correct check: on SRV01, open `certlm.msc` → Personal → Certificates and confirm the
+thumbprint in `settings.ServicesCertificateThumbprint` is present; right-click → All Tasks →
+Manage Private Keys and verify the service account (`account` field) has at least Read permission.
+If the cert is missing, re-import it from the original PFX before restarting.

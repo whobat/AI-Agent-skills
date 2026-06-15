@@ -4,7 +4,7 @@ description: SQL Server maintenance for a Microsoft Dynamics NAV 2009 database â
 license: MIT
 compatibility: Requires PowerShell 7+ and SQL Server maintenance permissions (db_backupoperator/ALTER/db_owner depending on action)
 metadata:
-  version: "1.0.1"
+  version: "1.0.2"
 ---
 
 # NAV 2009 DB Maintenance

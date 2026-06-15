@@ -115,3 +115,61 @@ UPDATE/INSERT/DELETE in this table.
 | Import Worksheet shows unexpected conflicts | Target objects were modified — stop and diff (.txt export both sides) before replacing |
 | Table sync prompt / "another user has modified" | Users in the system or schema change pending — get exclusive access, backup, retry |
 | Object imports but RTC still shows old behavior | RTC service tier caches metadata — restart the NST (`nav2009-service-tier-admin`) |
+
+## Gotchas
+
+**`finsql.exe command=` does not exist on NAV 2009 — every "automate the import" plan fails
+here.**
+The `command=exportobjects|importobjects|compileobjects` interface was introduced in NAV
+2013. On NAV 2009, `finsql.exe` only understands client startup properties (servername,
+database, ntauthentication, …). Any attempt produces the dialog *"The program property
+'command' is unknown"* and the process exits without touching the database. There is no
+supported unattended object operation on NAV 2009; all deployment steps in this runbook are
+manual. Correct the user immediately when they ask for a command-line import.
+
+**A `.fob` import is an interactive binary merge — it cannot run silently or headlessly.**
+When one or more incoming objects already exist in the target database, NAV opens the Import
+Worksheet and waits for the user to resolve each conflict before importing anything. There
+is no `/confirm` flag, no bypass, and no way to pre-answer the dialog. Any plan that relies
+on a `.fob` import completing without a human present (including UI-automation scripts) will
+stall on the first conflict row. The correct approach: review the Import Worksheet row by
+row, decide Replace/Skip/Merge per object, and only then click OK.
+
+**`.txt` import overwrites objects silently and leaves them uncompiled — runtime errors
+follow if you skip the F11 step.**
+Unlike `.fob`, a `.txt` import has no worksheet and performs no compile. Objects land in
+the database in an uncompiled state (`Compiled = 0` in `dbo.[Object]`). Any attempt to run
+or open an uncompiled object produces a C/AL runtime error. After every `.txt` import,
+filter the Object Designer on `Compiled = No` (or filter by the imported IDs), mark all
+rows, and press **F11** before declaring the import done. Verify with:
+
+```sql
+SELECT [Type], [ID], [Name] FROM dbo.[Object]
+WHERE [Compiled] = 0 AND [Type] > 0;
+```
+
+The result set must be empty for the affected objects before the deployment is considered
+complete.
+
+**Importing a table that changes schema locks the table and fires a synchronization prompt
+— do this on a live database without a backup and you risk data loss and downtime.**
+When the incoming object is a table whose field layout differs from the existing one (added
+fields, changed field types, deleted fields), NAV triggers schema synchronization during
+import (`.fob`) or compile (`.txt`). Synchronization acquires an exclusive lock on the
+SQL table for its duration. If other users or background jobs are accessing that table, the
+operation blocks or fails with a lock-timeout error. If the change removes or shrinks a
+field, NAV presents a Force/Check dialog — choosing Force deletes column data permanently.
+Required steps before any table-schema import on a live database: full backup
+(`nav2009-db-maintenance`), confirm zero active sessions in the affected company, schedule
+outside business hours.
+
+**An end-user/customer license can import a `.fob` but cannot export one, cannot import
+`.txt`, and cannot compile — the session silently determines what menu items are active.**
+The license type in the current client session controls which operations appear (or are
+available) in the UI. A user running with an end-user license will find File → Export
+greyed out for `.txt`, and F11 will produce a license error rather than compiling. The trap
+is that the `.fob` import option remains available under an end-user license, leading teams
+to assume the session is a full developer session when it is not. Always verify the active
+license before starting a deployment: **Tools → License Information** — confirm the
+Granule list includes the development granule (Granule 11110 or equivalent) before
+attempting export, `.txt` import, or compile.

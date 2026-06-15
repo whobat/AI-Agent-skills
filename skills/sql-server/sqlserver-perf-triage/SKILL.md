@@ -4,7 +4,7 @@ description: Diagnose performance problems on ANY Microsoft SQL Server instance 
 license: MIT
 compatibility: Requires PowerShell 7+ and SQL Server VIEW SERVER STATE / VIEW DATABASE STATE permissions
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # SQL Server Performance Triage

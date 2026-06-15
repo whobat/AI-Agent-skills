@@ -228,3 +228,55 @@ Always synchronize after:
    security filters — especially filters, which are invisible in normal form navigation.
 10. **Audit periodically**: review User Role assignments and security filters after staff changes,
     reorganizations, or new module go-lives.
+
+---
+
+## Gotchas
+
+### **"No permission" and "license does not permit" are two completely different errors — but they look similar at a glance**
+
+Trap: a user is blocked on an object and the support call goes straight to Roles. After 20 minutes of Role edits nothing changes, because the real error was "Your program license does not permit access to table X", not "You do not have permission to Read table X".
+
+Why it happens: both errors surface as a dialog during a NAV operation and both stop the user cold. The wording is distinct but busy support staff often paraphrase them the same way ("they get a permission error"). The license layer is checked first; no amount of Role editing can grant access to an object that falls outside the licensed granules.
+
+Correct approach: read the exact error text before touching anything. "Does not permit" → check Tools → License Information for the granule; "do not have permission" → check the user's Roles. Only if the granule is licensed but the user still cannot access the object does the Roles investigation begin.
+
+---
+
+### **Removing a "redundant" direct permission can silently break posting codeunits**
+
+Trap: a user has both a direct Insert right and an Indirect Insert right on a ledger table (e.g., `G/L Entry`). A clean-up pass removes the direct Insert as "redundant" since posting goes through a codeunit. After the change the user can no longer post, even though the codeunit still has Execute and the Indirect Insert is in place.
+
+Why it happens: Indirect means the right is exercisable only when called from C/AL code — but the call stack must end with the user's Role carrying that Indirect right on the table. If the user was also directly opening a reconciliation form that reads `G/L Entry` rows or runs a drilldown, that direct path now fails. NAV does not tell you which call path triggered the check. The error message names the table and the missing right, not whether it was a direct or indirect invocation, so it looks like the Indirect right simply stopped working.
+
+Correct approach: before removing any direct right that co-exists with an Indirect right on the same table, trace every path the user takes that touches that table — not just the main posting flow. If any path is a direct invocation (open form, report, filter dialog), the direct right must stay. When in doubt, keep direct; the cost of a slightly broader right is lower than a broken posting workflow.
+
+---
+
+### **A security filter on one Role is silently nullified if the user holds a second Role with no filter on the same table**
+
+Trap: `CONTOSO\user` is assigned two Roles — `SALES-BASIC` (which has a `Responsibility Center=RES1` filter on `Sales Header`) and `SALES-REPORT` (which has Read on `Sales Header` with no filter). The expectation is that the filter restricts the user to RES1 data. In practice the user can read all `Sales Header` rows.
+
+Why it happens: multiple Role assignments are additive. NAV unions the access rights across all Roles. A Role with no security filter on a table contributes an unrestricted Read on that table — effectively overriding the restrictive filter in the other Role. There is no "most restrictive wins" logic; the absence of a filter is itself a grant of unrestricted access.
+
+Correct approach: for any table that must be hard-restricted by a security filter, ensure that **every** Role the user holds either carries the same (or equally narrow) filter on that table, or carries no access to that table at all. Audit this whenever a new Role is added to a user. The Role-design best practice of building functional Roles (§Role-design best practices point 1) helps here: a catch-all "reporting" Role with broad TableData Read rights is the most common source of accidental filter bypass.
+
+---
+
+### **In Enhanced security, Role changes take effect in NAV immediately but SQL enforcement lags until Synchronize All Logins is run**
+
+Trap: a new Role is assigned to `CONTOSO\user` and tested from the RTC client — everything works. The same user then opens the Classic client and gets a SQL login error or "permission denied" at the database level. Alternatively, a revoked Role still works in Classic for an hour after removal.
+
+Why it happens: in Enhanced security, NAV maintains SQL Server database roles (one per company/Role combination) and places each user's SQL login in the appropriate SQL roles. This mapping is **not updated automatically** when you change a NAV Role assignment — it is updated only when Synchronize All Logins is run. RTC-tier users connect through the service account, so NAV's application-layer check reflects the new assignment instantly. Classic-tier users connect to SQL directly with their own SQL login, which is still in the old SQL role membership until sync runs.
+
+Correct approach: treat Synchronize All Logins as a mandatory final step of every Role change, not an optional housekeeping task. In Enhanced security setups, add it to the change procedure: make the NAV Role change → save → Database → Logins → Synchronize All Logins → verify with the affected user. If Classic and RTC behavior diverges immediately after a change, unsynchronized SQL roles are the first thing to check.
+
+---
+
+### **SUPER bypasses all permission checks, but it does not bypass the license — and this surprises administrators**
+
+Trap: a consultant assigned to `SUPER` tries to open an object from an unlicensed granule and gets a license error. The assumption was that SUPER means unrestricted access to everything.
+
+Why it happens: SUPER is implemented as a wildcard permission record (Object ID = 0) on every object type — it grants Read/Insert/Modify/Delete/Execute on all *licensed* objects. The license check is a separate, earlier gate that SUPER has no effect on. The NAV security model is layered: license → permission → security filter. SUPER collapses the permission layer to nothing but cannot collapse the license layer.
+
+Correct approach: when a SUPER user cannot access an object, check the license first (Tools → License Information), exactly as you would for any other user. If the granule is missing, the fix is a license upgrade — Role changes, including adding or modifying SUPER, will not help.

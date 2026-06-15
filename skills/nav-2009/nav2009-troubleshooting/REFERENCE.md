@@ -205,6 +205,30 @@ Common crash patterns in NAV 2009:
 
 ---
 
+## Gotchas
+
+Common misdiagnoses when triaging NAV 2009 symptoms — the surface presentation points you the wrong way.
+
+**"RTC won't connect" is almost never a client problem — check the Service Tier first.**
+The RoleTailored Client has no direct path to SQL; every connection goes through the NST on port 7046. When users report that the client "can't connect" or hangs at the loading screen, the instinct is to check the client config (`ClientUserSettings.config`) or the user's workstation. In practice the NST service is stopped or crashed in the majority of cases. Run `Get-Service *Nav*` on the NST host before touching anything on the client side. → **nav2009-service-tier-admin**.
+
+**A "permission error" may be a license limit — they need different fixes.**
+"You do not have permission to..." can be raised by both the NAV permission system (Role/Permission Set) and by the license granule check. The message text is nearly identical; the fix is not. A missing permission set entry is fixed in NAV security setup. A missing granule requires a new or updated `.flf` license file uploaded to the database. Trying to fix a license problem through permission sets (or vice versa) wastes time and changes nothing. Check the license granule list in Tools → License Information before editing any Role. → **nav2009-permissions-security**.
+
+**"Another user has modified the record" is a concurrency conflict, not data corruption.**
+The phrasing makes users fear their data is inconsistent or that someone deliberately overwrote their work. In almost all cases it is NAV's timestamp-based optimistic-concurrency guard firing because two sessions read and then attempted to write the same record. There is nothing wrong with the data; the losing transaction was simply rolled back. The real question is *why* the collision is recurring — usually a long open transaction (user left a record in edit mode) or a batch job that overlaps with interactive use. → **nav2009-sql-performance** to check for blocking; → **nav2009-development** for the C/AL transaction pattern.
+
+**Slow posting is a locking/blocking problem, not a raw query speed problem.**
+When posting hangs or takes minutes, the first instinct is to look for slow queries or missing indexes. In NAV 2009 posting is almost always bottlenecked by *lock contention* — typically the `No. Series Line` table or a high-traffic ledger table (`G/L Entry`, `Item Ledger Entry`) held by another session or by the posting transaction itself. A missing SIFT key or a `CALCSUMS` without a matching SumIndexField are secondary causes. Start with `sys.dm_exec_requests` and `sys.dm_os_waiting_tasks` to find the blocking head; only move to index fragmentation or query cost analysis if no blocking is present. → **nav2009-sql-performance**.
+
+**Compile errors after an object import mean the objects were not compiled — the import itself succeeded.**
+When `finsql.exe` imports objects and the subsequent compile step fails, users often conclude that the import was corrupt or incomplete and re-run it. The import wrote the objects to the database correctly; the compile failed because the imported code references something (a function, a field, a global) that does not exist in this database/build. Re-importing the same FOB achieves nothing. Fix the missing reference or resolve the build mismatch, then recompile. → **nav2009-object-management** for the compile workflow; → **nav2009-development** if the reference gap is a C/AL code issue.
+
+**"The Job Queue stopped processing" is usually an NST/NAS instance issue, not an application-level problem.**
+When Job Queue entries stop being picked up, the first place users look is the entries themselves — status, schedule, recurrence. But if *all* entries have stopped simultaneously, the NAS Windows service has almost certainly stopped or crashed. Check `Get-Service *Nav*` on the NAS host and the Windows Application Event Log before touching any Job Queue entries in the application. Resetting entries to "Ready" while the NAS service is down has no effect. → **win-eventlog-triage** on the NAS host; → **nav2009-service-tier-admin** to restart.
+
+---
+
 ## When to use which skill
 
 | Problem domain | Skill |
