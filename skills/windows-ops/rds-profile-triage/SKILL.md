@@ -1,6 +1,6 @@
 ---
 name: rds-profile-triage
-description: Read-only triage of Remote Desktop Services (RDS) session-host profile & WinRM-host health across one or many servers. The bundled script collects (over WinRM, with a CIM-over-DCOM fallback for hosts whose WinRM host process won't even launch) profile-hive leaks, temp-profile sprawl, ProfileList corruption, the roaming-profile path read RAW, RDS drain state, and User-Profiles-Service failure events grouped BY THE ACTUAL USER — then emits JSON the agent turns into a critical-first triage. Use when a user reports RDS/terminal-server problems like "user X gets logged out immediately / logged off right after sign-in", "everyone's getting temporary profiles", "their settings don't save on the RDS farm", "the session host won't accept logins", or "I can't PowerShell-remote into the RDS server (could not launch a host process)". Do NOT use for generic event-log sweeps (that is win-eventlog-triage) or SQL Server issues (sqlserver-perf-triage). Requires PowerShell 7+ and a tier-admin credential (always prompted).
+description: Read-only triage of Remote Desktop Services (RDS) session-host profile & WinRM-host health across one or many servers. The bundled script collects (over WinRM, with a CIM-over-DCOM fallback for hosts whose WinRM host process won't even launch) profile-hive leaks, temp-profile sprawl, ProfileList corruption, the roaming-profile path read RAW, drain state, and User-Profiles-Service failures grouped BY THE ACTUAL USER, then renders a uniform deterministic report the agent relays (JSON optional). Use when a user reports RDS/terminal-server problems like "user gets logged out immediately / logged off right after sign-in", "everyone's getting temporary profiles", "settings don't save on the RDS farm", "the session host won't accept logins", or "can't PowerShell-remote into the RDS server (could not launch a host process)". Do NOT use for generic event-log sweeps (use win-eventlog-triage) or SQL Server issues (sqlserver-perf-triage). Requires PowerShell 7+ and a tier-admin credential (prompted).
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine. WinRM mode needs PowerShell Remoting on the target RDS hosts; DCOM mode needs WMI/DCOM (TCP 135 + dynamic range) reachable. Read-only — makes no changes.
 metadata:
@@ -9,7 +9,7 @@ metadata:
 
 # RDS Profile & WinRM-Host Triage
 
-> Targets **Windows RDS session hosts** over **WinRM** (with a **CIM-over-DCOM** fallback). The bundled `scripts/Invoke-RdsProfileTriage.ps1` collects read-only health data and a set of deterministic `findings`; **you (the agent) write the triage and decide remediation.** The script never calls an LLM and **changes nothing**.
+> Targets **Windows RDS session hosts** over **WinRM** (with a **CIM-over-DCOM** fallback). The bundled `scripts/Invoke-RdsProfileTriage.ps1` collects read-only health data, computes deterministic severity-ranked `findings`, and **renders a uniform triage report itself** — so the output is identical every run and the agent just relays it (and decides remediation). The script never calls an LLM and **changes nothing**.
 
 `SCRIPT` = this skill's `scripts/Invoke-RdsProfileTriage.ps1`. It **requires PowerShell 7+** (`pwsh`).
 
@@ -32,7 +32,8 @@ Always run with `pwsh`. The script prompts for the tier-admin credential (reused
 | **A farm** | `-ComputerName RDS01,RDS02` or `-ServerListFile C:\ops\rds.txt` |
 | **Time window for events** | `-Hours 24` (default) · `-Since '2026-06-15T00:00'` · `-From <dt> -To <dt>` |
 | **WinRM host won't launch on a box** | `-Protocol Dcom` (reduced CIM/DCOM collection: uptime, drain, roaming-raw, ProfileList corruption) |
-| **Save full report** | `-OutFile C:\ops\rds.json` (stdout becomes compact summary) |
+| **Output shape** | `-Format text` (default — uniform human report) · `-Format json` · `-Format both` |
+| **Save full JSON** | `-OutFile C:\ops\rds.json` (full detail to file; stdout still follows `-Format`) |
 | **Auth/transport** | `-Authentication Negotiate\|Kerberos\|CredSSP` (default `Default`) |
 | **Tuning** | `-TempSampleSize 10` · `-MaxCorruptListed 20` · `-MaxMessageLength 400` |
 
@@ -49,22 +50,23 @@ pwsh -File SCRIPT -ComputerName RDS01 -Protocol Dcom
 
 ## Output contract
 
-- **Without `-OutFile`** → full JSON (every host + all detail) on stdout.
-- **With `-OutFile`** → full detail to the file; a **compact** JSON (`status`, `query`, `summary`, `caveats`) on stdout.
+The script does the formatting so every run looks the same — **the agent does not re-summarize.**
 
-Key fields: `summary.findings` (deterministic, severity-ranked flags across all hosts — your starting list); `summary.failures` (hosts that couldn't be collected, each with a `hint`); per host `roaming_profile.machine_profile_path_raw`, `hive_leak`, `temp_profiles`, `profilelist` (corruption counts + entries), `profile_events` (grouped by user + `user_class`), `winrm_host_launch`; and the top-level **`caveats`** array. Full schema in [REFERENCE.md](REFERENCE.md#output-schema).
+- **`-Format text`** (default) → a deterministic, uniform plain-text report on stdout, with fixed sections: header, `== FINDINGS (ranked) ==`, `== PER-HOST ==`, `== COVERAGE GAPS ==`, `== CAVEATS ==`. This is the output you relay.
+- **`-Format json`** → full JSON (or, with `-OutFile`, a compact summary on stdout + full detail in the file).
+- **`-Format both`** → the text report, then `--- JSON ---`, then the JSON.
+- **`-OutFile`** always writes the full-detail JSON to the file, whatever `-Format` is.
+
+JSON key fields (for `-Format json`/digging): `summary.findings`, `summary.failures` (each with a `hint`), per host `roaming_profile.machine_profile_path_raw`, `hive_leak`, `temp_profiles`, `profilelist`, `profile_events` (grouped by user + `user_class`), `winrm_host_launch`, and the top-level `caveats`. Full schema in [REFERENCE.md](REFERENCE.md#output-schema).
 
 ## What you (the agent) do with the result
 
-1. **Run the script**, parse the JSON. If a host failed with "could not launch a host process", **re-run that host with `-Protocol Dcom`** — that exact failure is usually ProfileList corruption the DCOM pass can still read.
-2. **Lead with `summary.findings`** (critical → high → medium), named by host. Translate each into plain language + a suggested next action.
-3. **Apply the caveats before blaming anything** (this is the whole point):
-   - Profile-failure events with `user_class=self_or_admin` → likely **your double-hop**, not a user problem. Say so; don't report it as an outage.
-   - `user_class=service_account` churn (temp profiles) → name the account; it's housekeeping, not a farm outage. Recommend excluding it from the roaming GPO.
-   - Only `user_class=interactive_user` failures are real user-facing problems — these get priority.
-   - Report the roaming path from `machine_profile_path_raw` **exactly**; never claim it's hardcoded to a user unless the RAW value truly lacks `%USERNAME%`.
-4. **Fail loud** (Karpathy): list every host in `summary.failures`; note when DCOM mode returned a **reduced** dataset (`dcom_note`); never imply full coverage you didn't get.
-5. **Only then** propose remediation (reboot to clear leaked hives, back-up-then-remove corrupt ProfileList entries, clean temp sprawl, exclude service accounts from roaming) — and confirm before changing anything.
+Keep it minimal — the report is already uniform and complete:
+
+1. **Run the script** (default `-Format text`) and **relay the report as-is.** Do not reformat, re-rank, or re-summarize it — that's the script's job and the whole point of consistent output. At most add a one-line lead.
+2. **Act on the one piece of judgement the script can't:** if a host shows `FAILED - ... could not launch a host process`, **re-run that host with `-Protocol Dcom`** (the report's `hint` says so) and relay the second report.
+3. **Honor the `== CAVEATS ==` section** when the user asks "so what's the cause" — they are the guardrails (self_or_admin = your double-hop, service_account churn ≠ farm outage, RAW roaming path, the Element-not-found chain). Don't contradict them.
+4. **Propose remediation only on request** (reboot to clear leaked hives, back-up-then-remove corrupt ProfileList entries, clean temp sprawl, exclude service accounts from roaming) — and confirm before changing anything. This skill itself changes nothing.
 
 ## Errors
 

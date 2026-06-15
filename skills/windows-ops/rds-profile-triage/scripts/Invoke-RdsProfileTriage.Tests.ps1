@@ -126,6 +126,62 @@ Describe 'Get-Findings (deterministic flags)' {
   }
 }
 
+Describe 'Format-TriageReport (uniform deterministic output)' {
+  BeforeAll {
+    $script:rep = [pscustomobject]@{
+      status       = 'partial'; generated_at = '2026-06-15T10:00:00Z'
+      query        = [pscustomobject]@{ hosts = @('RDS01', 'RDS02'); from = 'A'; to = 'B'; protocol = 'WinRM' }
+      caveats      = @('caveat-one', 'caveat-two')
+      hosts        = @(
+        [pscustomobject]@{
+          computer = 'RDS01'; status = 'ok'; collection_method = 'winrm'; os = 'Server 2019'
+          uptime_hours = 240; pending_reboot = $false
+          disk = [pscustomobject]@{ pct_free = 23.1; c_free_gb = 18.3 }
+          drain = [pscustomobject]@{ accepting_logons = $true; mode = 0 }
+          hive_leak = [pscustomobject]@{ leaked = 15; loaded_user_hives = 21; active_sessions = 6 }
+          temp_profiles = [pscustomobject]@{ count = 1138; sample = @([pscustomobject]@{ owner = 'BUILTIN\Administrators' }) }
+          profilelist = [pscustomobject]@{ total = 16; empty_path = 3; bak = 2; temp_pointing = 2 }
+          roaming_profile = [pscustomobject]@{ machine_profile_path_raw = '\\FS01\profiles$\%USERNAME%\RdsProfile' }
+          winrm_host_launch = [pscustomobject]@{ failing = $false; dcom10000_wsmprovhost = 0; winrm86 = 0 }
+          profile_events = @([pscustomobject]@{ count = 185; event_id = 1511; user = 'CONTOSO\svc-backup'; user_class = 'service_account' })
+        },
+        [pscustomobject]@{ computer = 'RDS02'; status = 'failed'; error = "could not launch a host process"; hint = 'Re-run with -Protocol Dcom.' }
+      )
+      summary      = [pscustomobject]@{
+        hosts_total = 2; hosts_ok = 1; hosts_failed = 1
+        failures = @([pscustomobject]@{ computer = 'RDS02'; status = 'failed'; error = 'could not launch a host process'; hint = 'Re-run with -Protocol Dcom.' })
+        findings = @([pscustomobject]@{ computer = 'RDS01'; severity = 'high'; finding = 'ProfileList corruption: 3 empty-path' })
+      }
+    }
+    $script:txt = Format-TriageReport -Report $script:rep
+  }
+  It 'emits the standard section headers' {
+    $txt | Should -Match 'RDS PROFILE TRIAGE'
+    $txt | Should -Match '== FINDINGS \(ranked\) =='
+    $txt | Should -Match '== PER-HOST =='
+    $txt | Should -Match '== CAVEATS \(apply before concluding\) =='
+  }
+  It 'renders findings with a severity tag and the host name' {
+    $txt | Should -Match '\[HIGH\] \[RDS01\] ProfileList corruption'
+  }
+  It 'shows the RAW roaming path verbatim (no expansion) and the by-user event line' {
+    $txt | Should -Match ([regex]::Escape('\\FS01\profiles$\%USERNAME%\RdsProfile'))
+    $txt | Should -Match '185x  id 1511  CONTOSO\\svc-backup \[service_account\]'
+  }
+  It 'reports the failed host with its hint and a coverage-gaps section' {
+    $txt | Should -Match 'RDS02: FAILED - could not launch a host process'
+    $txt | Should -Match '== COVERAGE GAPS =='
+    $txt | Should -Match 'Re-run with -Protocol Dcom'
+  }
+  It 'prints the OK line when there are no findings' {
+    $clean = [pscustomobject]@{
+      status = 'ok'; generated_at = 'x'; query = [pscustomobject]@{ hosts = @('RDS01'); from = 'A'; to = 'B'; protocol = 'WinRM' }
+      caveats = @('c'); hosts = @(); summary = [pscustomobject]@{ hosts_total = 1; hosts_ok = 1; hosts_failed = 0; failures = @(); findings = @() }
+    }
+    (Format-TriageReport -Report $clean) | Should -Match 'OK - no issues flagged'
+  }
+}
+
 Describe 'ConvertTo-CompactReport' {
   It 'keeps summary/caveats but drops per-host detail' {
     $full = [pscustomobject]@{

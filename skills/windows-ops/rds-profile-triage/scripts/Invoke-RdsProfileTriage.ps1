@@ -65,6 +65,10 @@ param(
   [int]$TempSampleSize = 10,
   [int]$MaxCorruptListed = 20,
   [int]$MaxMessageLength = 400,
+  # Output shape. 'text' = deterministic, uniform human report (default — relay it as-is).
+  # 'json' = full/compact JSON. 'both' = report then JSON.
+  [ValidateSet('text', 'json', 'both')]
+  [string]$Format = 'text',
   [string]$OutFile,
   [ValidateSet('Default', 'Negotiate', 'Kerberos', 'CredSSP')]
   [string]$Authentication = 'Default',
@@ -175,6 +179,72 @@ function Get-Findings {
     & $add 'high' ("Profile failures for REAL interactive users: $names. This is a genuine user-facing problem (not double-hop/service-account noise) — investigate their roaming profile + hive state.")
   }
   $f
+}
+
+# Render the report object as a deterministic, uniform plain-text triage report.
+# Pure (no remoting). This is what the agent relays verbatim — same shape every run.
+function Format-TriageReport {
+  param([Parameter(Mandatory)][object]$Report)
+  $tags = @{ critical = '[CRIT]'; high = '[HIGH]'; medium = '[MED ]' }
+  $L = [System.Collections.Generic.List[string]]::new()
+  $drainText = {
+    param($d)
+    if ($null -eq $d) { return 'n/a' }
+    if ($d.accepting_logons -eq $false) { return 'ON (NOT accepting new logons)' }
+    if ($d.accepting_logons -eq $true) { return 'off (accepting logons)' }
+    "mode=$($d.mode)"
+  }
+
+  $L.Add("RDS PROFILE TRIAGE  -  $($Report.generated_at)")
+  $L.Add("Hosts: $(($Report.query.hosts) -join ', ')  |  Window: $($Report.query.from)..$($Report.query.to)  |  Protocol: $($Report.query.protocol)")
+  $L.Add("Status: $($Report.status.ToUpper())  |  Collected: $($Report.summary.hosts_ok)/$($Report.summary.hosts_total) hosts")
+  $L.Add('')
+  $L.Add('== FINDINGS (ranked) ==')
+  if (@($Report.summary.findings).Count -eq 0) {
+    $L.Add('  OK - no issues flagged.')
+  }
+  else {
+    foreach ($f in $Report.summary.findings) {
+      $tag = $tags[$f.severity]; if (-not $tag) { $tag = '[----]' }
+      $L.Add("  $tag [$($f.computer)] $($f.finding)")
+    }
+  }
+  $L.Add('')
+  $L.Add('== PER-HOST ==')
+  foreach ($h in $Report.hosts) {
+    if ($h.status -ne 'ok') {
+      $L.Add("  $($h.computer): FAILED - $($h.error)")
+      if ($h.hint) { $L.Add("      hint: $($h.hint)") }
+      continue
+    }
+    $L.Add("  $($h.computer)  [$($h.collection_method)]  $($h.os)")
+    $L.Add("      uptime: $([math]::Round($h.uptime_hours / 24, 1))d   C: free $($h.disk.pct_free)% ($($h.disk.c_free_gb) GB)   pending_reboot: $($h.pending_reboot)")
+    $L.Add("      drain: $(& $drainText $h.drain)")
+    if ($null -ne $h.hive_leak) { $L.Add("      hive leak: $($h.hive_leak.leaked) orphaned ($($h.hive_leak.loaded_user_hives) loaded vs $($h.hive_leak.active_sessions) sessions)") }
+    if ($null -ne $h.temp_profiles) {
+      $own = (@($h.temp_profiles.sample) | Select-Object -First 1).owner
+      $L.Add("      temp profiles: $($h.temp_profiles.count)$(if ($own) { "  (newest owner: $own)" })")
+    }
+    if ($null -ne $h.profilelist) { $L.Add("      ProfileList: $($h.profilelist.total) entries; corrupt: $($h.profilelist.empty_path) empty / $($h.profilelist.bak) .bak / $($h.profilelist.temp_pointing) temp-pointing") }
+    if ($null -ne $h.roaming_profile) { $L.Add("      roaming path (RAW): $($h.roaming_profile.machine_profile_path_raw)") }
+    if ($null -ne $h.winrm_host_launch) {
+      $L.Add("      WinRM host-launch: $(if ($h.winrm_host_launch.failing) { "FAILING (DCOM10000 x$($h.winrm_host_launch.dcom10000_wsmprovhost), WinRM86 x$($h.winrm_host_launch.winrm86))" } else { 'ok' })")
+    }
+    $pe = @($h.profile_events)
+    if ($pe.Count) {
+      $L.Add('      profile events (by actual user):')
+      foreach ($e in ($pe | Select-Object -First 6)) { $L.Add("        $($e.count)x  id $($e.event_id)  $($e.user) [$($e.user_class)]") }
+      if ($pe.Count -gt 6) { $L.Add("        (+$($pe.Count - 6) more user/event groups)") }
+    }
+    if ($h.dcom_note) { $L.Add("      note: $($h.dcom_note)") }
+  }
+  if (@($Report.summary.failures).Count) {
+    $L.Add(''); $L.Add('== COVERAGE GAPS ==')
+    foreach ($fa in $Report.summary.failures) { $L.Add("  $($fa.computer): $($fa.status) - $($fa.error)"); if ($fa.hint) { $L.Add("      hint: $($fa.hint)") } }
+  }
+  $L.Add(''); $L.Add('== CAVEATS (apply before concluding) ==')
+  foreach ($c in $Report.caveats) { $L.Add("  - $c") }
+  ($L -join "`n")
 }
 
 # Reduce a full report to the compact stdout form used with -OutFile.
@@ -407,11 +477,14 @@ $report = [pscustomobject]@{
   caveats      = $caveats
 }
 
-if ($OutFile) {
-  $report | ConvertTo-Json -Depth 12 | Out-File -FilePath $OutFile -Encoding utf8
-  (ConvertTo-CompactReport -Report $report) | ConvertTo-Json -Depth 8
-}
-else {
-  $report | ConvertTo-Json -Depth 12
+# Full detail always goes to -OutFile (JSON) when requested, regardless of -Format.
+if ($OutFile) { $report | ConvertTo-Json -Depth 12 | Out-File -FilePath $OutFile -Encoding utf8 }
+
+$jsonOut = if ($OutFile) { (ConvertTo-CompactReport -Report $report) | ConvertTo-Json -Depth 8 } else { $report | ConvertTo-Json -Depth 12 }
+
+switch ($Format) {
+  'text' { Format-TriageReport -Report $report }
+  'json' { $jsonOut }
+  'both' { Format-TriageReport -Report $report; ''; '--- JSON ---'; $jsonOut }
 }
 } # end dot-source guard

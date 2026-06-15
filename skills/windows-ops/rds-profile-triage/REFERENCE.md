@@ -24,7 +24,8 @@ workflow see [SKILL.md](SKILL.md). The script is **read-only** — it never chan
 | `-TempSampleSize` | int | 10 | How many newest `TEMP*` folders to sample (with owner). |
 | `-MaxCorruptListed` | int | 20 | Cap on listed corrupt ProfileList entries. |
 | `-MaxMessageLength` | int | 400 | Truncates each event group's sample message. |
-| `-OutFile` | string | — | Full JSON to file; stdout becomes the compact view. |
+| `-Format` | string | `text` | `text` = uniform deterministic report (relay it); `json` = full/compact JSON; `both` = report then JSON. |
+| `-OutFile` | string | — | Always writes full-detail JSON to the file; stdout still follows `-Format`. |
 | `-Authentication` | string | `Default` | WinRM auth: `Default`/`Negotiate`/`Kerberos`/`CredSSP`. |
 | `-Credential` | pscredential | — | Testing/automation seam only. Omit in normal use → prompted. |
 
@@ -128,7 +129,15 @@ Symptoms when the operator box isn't in the target's domain:
 Fixes, in order: (1) run from a **domain-joined admin host** (Kerberos just works, no double-hop);
 (2) add the targets to WinRM TrustedHosts — `Set-Item WSMan:\localhost\Client\TrustedHosts -Value 'rds01.contoso.local' -Concatenate` (scope to **FQDNs, not `*`**; needs local admin) — note this is NTLM, so the **double-hop caveat applies**; (3) `-Protocol Dcom`.
 
-## Output schema
+## Output
+
+`-Format text` (default) renders a deterministic report with fixed sections in a fixed order —
+`header → == FINDINGS (ranked) == → == PER-HOST == → == COVERAGE GAPS == (only if any) →
+== CAVEATS ==`. Severities render as `[CRIT]`/`[HIGH]`/`[MED ]` (ASCII, not emoji, for encoding
+and terminal consistency). The report is built from the same object shown below, so two runs
+against the same state produce byte-identical text. `-Format json`/`both` expose the raw object.
+
+## Output schema (the object behind every format)
 
 ```json
 {
