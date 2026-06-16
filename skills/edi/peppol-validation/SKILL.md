@@ -55,7 +55,7 @@ For several explicit files at once, use a wildcard/folder or an array call
 | `-Endpoint` | Validation web service. Default = public OpenPeppol/Helger. Point at a self-hosted phive-ws for production/PII/batch. |
 | `-VesId` | Force a specific VESID, skipping auto-detection (e.g. to validate against a deprecated ruleset). |
 | `-ReportFolder` | Write the raw validation response (`<file>.validation.xml`) per document. |
-| `-ConfigPath` | Path to a `config.json` (defaults to one in the skill folder). |
+| `-ConfigPath` | Explicit `config.json` path. If omitted: `~/.peppol-validation/config.json`, then a skill-folder `config.json`, else the Helger default. |
 
 ## Self-hosted validator (config.json)
 

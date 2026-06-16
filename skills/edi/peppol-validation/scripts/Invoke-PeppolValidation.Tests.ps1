@@ -72,9 +72,20 @@ Describe 'Invoke-PeppolValidation.ps1' {
             $iResp | Should -BeGreaterThan -1
             $iResp | Should -BeLessThan $iOrder
         }
+
+        It 'is root-aware: transaction rules carry an expected Root and a mismatch is non-standard' {
+            $script:Content | Should -Match "Root = 'DespatchAdvice'"
+            $script:Content | Should -Match "Root = 'OrderResponse'"
+            $script:Content | Should -Match "if \(\`$RootName -and \`$RootName -ne \`$r\.Root\) \{ return \`$null \}"
+        }
     }
 
     Context 'behaviour contract' {
+        It 'final OK verdict also requires the service to report success (no false [OK])' {
+            $script:Content | Should -Match '-not \$r\.Success'
+            $script:Content | Should -Match '\$r\.Errors\.Count -gt 0'
+        }
+
         It 'flags unrecognized documents as non-standard (exit 3 path)' {
             $script:Content | Should -Match 'NonStandard'
             $script:Content | Should -Match 'NOT a recognized Peppol BIS 3\.0 document'

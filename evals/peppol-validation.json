@@ -11,9 +11,10 @@
   },
   {
     "skills": ["peppol-validation"],
-    "query": "I have two order XML files that look the same but one is rejected by our partner. Which one is the old schema?",
+    "query": "I have two order XML files that look the same but one is rejected by our partner. Which one is the old schema? They are C:\\orders\\order_new.xml and C:\\orders\\order_old.xml",
     "expected_behavior": [
-      "Validates both files and compares their cbc:CustomizationID, not the root element or filename",
+      "Runs the script on both given paths (or, if no paths were provided, asks for them before validating)",
+      "Compares their cbc:CustomizationID, not the root element or filename",
       "Identifies the current one as urn:fdc:peppol.eu:poacc:trns:order:3 (Peppol BIS 3.0 Order) and the other as a non-standard / pre-BIS-3 schema (e.g. CENBII peppol28a)",
       "Explains the non-standard file cannot be auto-validated against BIS 3.0 and that exit code 3 signals 'old/wrong schema'"
     ]

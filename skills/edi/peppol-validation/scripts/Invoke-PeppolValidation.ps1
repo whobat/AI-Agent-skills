@@ -101,20 +101,23 @@ begin {
         'despatch-advice' = 'Despatch Advice'; 'mlr' = 'Message Level Response'
         'punch-out' = 'Punch Out'; 'invoice-message-response' = 'Invoice Message Response'
     }
-    # poacc transaction CustomizationID token -> artifact (ordered: most specific first)
+    # poacc transaction CustomizationID token -> artifact (ordered: most specific first).
+    # Root is the expected UBL root element for that transaction: detection requires BOTH the
+    # CustomizationID token AND a matching root, so a mismatched/malformed document is treated
+    # as non-standard instead of being mapped to the wrong ruleset.
     $script:TrnsRules = @(
-        @{ Token = 'poacc:trns:order_response_advanced:3';   Artifact = 'order-response-advanced' }
-        @{ Token = 'poacc:trns:order_response:3';            Artifact = 'order-response' }
-        @{ Token = 'poacc:trns:order_change:3';              Artifact = 'order-change' }
-        @{ Token = 'poacc:trns:order_cancellation:3';        Artifact = 'order-cancellation' }
-        @{ Token = 'poacc:trns:order_agreement:3';           Artifact = 'order-agreement' }
-        @{ Token = 'poacc:trns:order:3';                     Artifact = 'order' }
-        @{ Token = 'poacc:trns:despatch_advice:3';           Artifact = 'despatch-advice' }
-        @{ Token = 'poacc:trns:catalogue_response:3';        Artifact = 'catalogue-response' }
-        @{ Token = 'poacc:trns:punch_out:3';                 Artifact = 'punch-out' }
-        @{ Token = 'poacc:trns:catalogue:3';                 Artifact = 'catalogue' }
-        @{ Token = 'poacc:trns:invoice_message_response:3';  Artifact = 'invoice-message-response' }
-        @{ Token = 'poacc:trns:mlr:3';                       Artifact = 'mlr' }
+        @{ Token = 'poacc:trns:order_response_advanced:3';   Artifact = 'order-response-advanced'; Root = 'OrderResponse' }
+        @{ Token = 'poacc:trns:order_response:3';            Artifact = 'order-response';          Root = 'OrderResponse' }
+        @{ Token = 'poacc:trns:order_change:3';              Artifact = 'order-change';            Root = 'Order' }
+        @{ Token = 'poacc:trns:order_cancellation:3';        Artifact = 'order-cancellation';      Root = 'OrderCancellation' }
+        @{ Token = 'poacc:trns:order_agreement:3';           Artifact = 'order-agreement';         Root = 'Order' }
+        @{ Token = 'poacc:trns:order:3';                     Artifact = 'order';                   Root = 'Order' }
+        @{ Token = 'poacc:trns:despatch_advice:3';           Artifact = 'despatch-advice';         Root = 'DespatchAdvice' }
+        @{ Token = 'poacc:trns:catalogue_response:3';        Artifact = 'catalogue-response';      Root = 'ApplicationResponse' }
+        @{ Token = 'poacc:trns:punch_out:3';                 Artifact = 'punch-out';               Root = 'Catalogue' }
+        @{ Token = 'poacc:trns:catalogue:3';                 Artifact = 'catalogue';               Root = 'Catalogue' }
+        @{ Token = 'poacc:trns:invoice_message_response:3';  Artifact = 'invoice-message-response'; Root = 'ApplicationResponse' }
+        @{ Token = 'poacc:trns:mlr:3';                       Artifact = 'mlr';                     Root = 'ApplicationResponse' }
     )
 
     $script:Files = New-Object System.Collections.Generic.List[string]
@@ -155,17 +158,24 @@ begin {
 
     function Get-Artifact {
         param([string] $RootName, [string] $CustId)
-        # Returns the Peppol BIS 3.0 artifact key, or $null if not our standard.
+        # Returns the Peppol BIS 3.0 artifact key, or $null if the document isn't our standard.
+        # Both the root element AND the CustomizationID must agree; a mismatch (malformed or
+        # mislabelled XML) is treated as non-standard rather than mapped to the wrong ruleset.
         if ($CustId -like '*poacc:selfbilling:3.0*') {
             if ($RootName -eq 'CreditNote') { return 'creditnote-self-billing' }
-            return 'invoice-self-billing'
+            if ($RootName -eq 'Invoice')    { return 'invoice-self-billing' }
+            return $null
         }
         if ($CustId -like '*poacc:billing:3.0*') {
             if ($RootName -eq 'CreditNote') { return 'creditnote' }
-            return 'invoice'
+            if ($RootName -eq 'Invoice')    { return 'invoice' }
+            return $null
         }
         foreach ($r in $script:TrnsRules) {
-            if ($CustId -like ('*' + $r.Token + '*')) { return $r.Artifact }
+            if ($CustId -like ('*' + $r.Token + '*')) {
+                if ($RootName -and $RootName -ne $r.Root) { return $null }
+                return $r.Artifact
+            }
         }
         return $null
     }
@@ -331,13 +341,17 @@ end {
             Write-Host "  Warnings: $($r.Warnings.Count)" -ForegroundColor Yellow
             foreach ($w in $r.Warnings) { Write-Host "    - $w" -ForegroundColor Yellow }
         }
-        if ($r.Errors.Count -eq 0) {
-            Write-Host "  Result:   [OK] valid - no errors" -ForegroundColor Green
-            $script:Valid++
-        } else {
+        if ($r.Errors.Count -gt 0) {
             Write-Host "  Result:   [FAIL] $($r.Errors.Count) error(s)" -ForegroundColor Red
             foreach ($e in $r.Errors) { Write-Host "    - $e" -ForegroundColor Red }
             $script:Invalid++
+        } elseif (-not $r.Success) {
+            # Service reported failure without itemized errors - never call this valid.
+            Write-Host "  Result:   [FAIL] validation did not succeed (service mostSevere: $($r.MostSevere))" -ForegroundColor Red
+            $script:Invalid++
+        } else {
+            Write-Host "  Result:   [OK] valid - no errors" -ForegroundColor Green
+            $script:Valid++
         }
     }
 
