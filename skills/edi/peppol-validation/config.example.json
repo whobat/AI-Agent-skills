@@ -1,0 +1,9 @@
+{
+  "_note": "DEFAULT is the public OpenPeppol/Helger service. Copy this file to config.json (same folder) ONLY if you want to change that. To use a self-hosted validator, RENAME '_endpoint' to 'endpoint' and set your URL (keys starting with '_' are ignored, so as long as it stays '_endpoint' the public Helger service keeps being used). config.json is gitignored and preserved across skill updates. All keys optional; an explicit -Endpoint / -VesId on the command line still wins.",
+  "_endpoint": "http://localhost:8080/wsdvs",
+  "vesByArtifact": {
+    "invoice": "eu.peppol.bis3:invoice:2025.11",
+    "creditnote": "eu.peppol.bis3:creditnote:2025.11",
+    "despatch-advice": "eu.peppol.bis3:despatch-advice:2025.11"
+  }
+}

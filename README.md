@@ -41,6 +41,7 @@ What you need depends on which skills you install. The skill itself (`SKILL.md`)
 | **sqlserver-perf-triage** | PowerShell 7+ (auto-installed) | — | Windows integrated auth (or `-SqlCredential`, prompted). `VIEW SERVER STATE` + `VIEW DATABASE STATE`. Read-only. |
 | **ax2012-sql-performance** | PowerShell 7+ (auto-installed) | — | Windows integrated auth (or `-SqlCredential`, prompted). `VIEW SERVER STATE` + `VIEW DATABASE STATE`. Read-only. |
 | **retail-pos-fleet-health** | PowerShell 7+ (auto-installed) | — | Admin credential on the targets, **prompted each run**. WinRM on the targets. Read-only. |
+| **peppol-validation** | Windows PowerShell 5.1+ or PowerShell 7+ | — | Outbound HTTPS to a Peppol validation web service (public OpenPeppol/Helger by default, or a self-hosted phive-ws for production/PII/batch). Read-only. |
 
 ## Repository layout
 
@@ -62,6 +63,7 @@ AI-Agent-skills/
 └── skills/
     ├── nav-2009/              # category folder (7 NAV 2009 skills)
     ├── ax-retail/             # Dynamics AX 2012 + Retail POS
+    ├── edi/                   # EDI / e-document exchange (Peppol BIS 3.0 validation, …)
     ├── sql-server/ · windows-ops/ · documents/ · time-tracking/ · repo-tooling/
     └── time-tracking/
         └── 7pace-time-tracker/   # one folder per skill; name == this folder
@@ -92,6 +94,7 @@ AI-Agent-skills/
 | **sqlserver-perf-triage** | **Generic SQL Server performance triage** (any instance/database): read-only DMV snapshot — top queries, waits, blocking, deadlocks, missing/unused indexes, fragmentation, stale stats, config — as JSON, with a generic interpretation guide. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE`. |
 | **ax2012-sql-performance** | **Dynamics AX 2012 (R3) SQL performance triage**: the same read-only snapshot, interpreted through an AX lens — known bloat tables and their cleanup routines, RCSI/TF4136/MAXDOP posture, AOT-owned indexes, and Retail channel DB / CDX sync health. | PowerShell 7+ (auto-installed), `VIEW SERVER STATE`/`VIEW DATABASE STATE`. |
 | **retail-pos-fleet-health** | **POS / Windows fleet health sweep** over WinRM: stopped auto-start services, local SQL instances with per-DB sizes (flags databases nearing the SQL Express 10 GB limit), low disk, recent error counts — ranked warnings as JSON. Read-only. | PowerShell 7+ (auto-installed), WinRM on the targets, admin credential (prompted). |
+| **peppol-validation** | **Peppol BIS 3.0 document validation**: auto-identifies a UBL document (invoice, credit note, order + responses, catalogue, despatch advice, MLR, …) from its root + `CustomizationID`, says whether it's the current BIS 3.0 standard or an outdated schema, then runs the full official validation (UBL 2.1 XSD + Peppol Schematron) via the OpenPeppol/Helger web service and reports OK or the exact errors with rule IDs. Files, folders, or pipeline; exit codes for automation. | Windows PowerShell 5.1+ or PowerShell 7+, outbound HTTPS to the validation service (self-host phive-ws for production/PII). |
 | **ai-agent-skills-update** | **Update skills installed from THIS repo** (and only this repo — other skills are never touched): runs the installer in `--update` mode across all agents, refreshes every installed repo skill to the latest published version, installs nothing new, preserves local `config.json`. Triggers on "update my AI-Agent-skills". | Node.js 18+ for the npx path (warned if missing; clone + `install.ps1`/`install.sh -Update` works without). |
 
 ## Install as a Claude Code plugin (marketplace)

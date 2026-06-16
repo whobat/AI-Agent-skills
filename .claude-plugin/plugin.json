@@ -1,6 +1,6 @@
 {
   "name": "ai-agent-skills",
-  "description": "Portable SKILL.md agent skills: a Microsoft Dynamics NAV 2009 toolkit (C/AL development, SQL performance triage, object deployment, service-tier admin, database maintenance, security, troubleshooting), Dynamics AX 2012 / Retail POS, generic SQL Server and Windows Event Log triage, branded document generation, 7pace time tracking, and a self-update skill.",
+  "description": "Portable SKILL.md agent skills: a Microsoft Dynamics NAV 2009 toolkit (C/AL development, SQL performance triage, object deployment, service-tier admin, database maintenance, security, troubleshooting), Dynamics AX 2012 / Retail POS, generic SQL Server and Windows Event Log triage, Peppol BIS 3.0 document validation, branded document generation, 7pace time tracking, and a self-update skill.",
   "author": {
     "name": "whobat"
   },
@@ -11,6 +11,7 @@
     "./skills/windows-ops",
     "./skills/documents",
     "./skills/time-tracking",
-    "./skills/repo-tooling"
+    "./skills/repo-tooling",
+    "./skills/edi"
   ]
 }

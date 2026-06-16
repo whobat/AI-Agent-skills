@@ -1,0 +1,25 @@
+{
+  "requirements": [
+    {
+      "name": "PowerShell 7",
+      "detect": "pwsh",
+      "minVersion": "7.0",
+      "wingetId": "Microsoft.PowerShell",
+      "brewCask": "powershell",
+      "githubRepo": "PowerShell/PowerShell",
+      "url": "https://github.com/PowerShell/PowerShell/releases/latest",
+      "warnOnly": true,
+      "help": "The script also runs on Windows PowerShell 5.1, so this is recommended, not required. It additionally needs outbound HTTPS to a Peppol validation web service (the public OpenPeppol/Helger instance by default, or a self-hosted phive-ws)."
+    }
+  ],
+  "authCommand": "pwsh -File scripts/Set-PeppolConfig.ps1",
+  "configPath": "~/.peppol-validation/config.json",
+  "description": "OPTIONAL endpoint setup. The default validator is the public OpenPeppol/Helger service and needs no config. Run this only to validate against a self-hosted phive-ws.",
+  "authHelp": [
+    "Validation endpoint (OPTIONAL — default is the public OpenPeppol/Helger service):",
+    "  run: pwsh -File scripts/Set-PeppolConfig.ps1",
+    "  Press Enter at the prompt to keep the public Helger service (nothing is written).",
+    "  Or enter a URL (e.g. http://localhost:8080/wsdvs) to use a self-hosted phive-ws.",
+    "Stored at ~/.peppol-validation/config.json (machine-local, never committed)."
+  ]
+}
