@@ -1,0 +1,31 @@
+[
+  {
+    "skills": ["peppol-validation"],
+    "query": "Can you validate this Peppol invoice for me? C:\\Peppol\\Out\\invoice_KO1718966.xml",
+    "expected_behavior": [
+      "Runs Invoke-PeppolValidation.ps1 on the file",
+      "Reports the detected document type and CustomizationID, and that it is (or isn't) Peppol BIS 3.0",
+      "States OK if valid, or lists each Schematron error with its Peppol rule ID and the failing element path",
+      "Does not claim it passed if the run hit a technical error or the service rate-limited (exit 2)"
+    ]
+  },
+  {
+    "skills": ["peppol-validation"],
+    "query": "I have two order XML files that look the same but one is rejected by our partner. Which one is the old schema? They are C:\\orders\\order_new.xml and C:\\orders\\order_old.xml",
+    "expected_behavior": [
+      "Runs the script on both given paths (or, if no paths were provided, asks for them before validating)",
+      "Compares their cbc:CustomizationID, not the root element or filename",
+      "Identifies the current one as urn:fdc:peppol.eu:poacc:trns:order:3 (Peppol BIS 3.0 Order) and the other as a non-standard / pre-BIS-3 schema (e.g. CENBII peppol28a)",
+      "Explains the non-standard file cannot be auto-validated against BIS 3.0 and that exit code 3 signals 'old/wrong schema'"
+    ]
+  },
+  {
+    "skills": ["peppol-validation"],
+    "query": "Validate every e-invoice in C:\\Peppol\\Outbox before we send them tonight.",
+    "expected_behavior": [
+      "Runs the script against the folder (batch) and summarizes valid / with-errors / non-standard / technical counts",
+      "Flags rate-limiting on the public service and recommends a self-hosted phive-ws endpoint for batch/production and to avoid sending PII to a public service",
+      "Leads with which specific files failed and why, rather than dumping raw XML"
+    ]
+  }
+]
