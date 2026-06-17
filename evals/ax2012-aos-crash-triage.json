@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "Our AX AOS service on AOS02 and AOS03 crashed and restarted this morning — why?",
+    "expected_behavior": [
+      "Runs Invoke-AosCrashTriage.ps1 with pwsh against the named AOS hosts (credential prompted, never on the command line)",
+      "Leads with the crash chain: which AOS crashed, when, and the Ax32Serv fault signature (exception 0xc0000005 + fault offset), noting whether the offset is identical across crashes (deterministic kernel path)",
+      "Surfaces the Dynamics Server 110/180 session-allocation precursors as the trigger, and fails loud on any unreachable/auth_failed or truncated host"
+    ]
+  },
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "When the AOS died it kicked every AX user off the RDS farm — can you prove that and find the first domino? Here are the AOS and WTS host lists.",
+    "expected_behavior": [
+      "Passes -AosListFile and -ClientListFile so client (Ax32.exe) crashes are correlated against AOS terminations",
+      "Uses summary.cascade_correlation to show client crashes clustered at AOS termination times and explains the AOS-dies-then-reconnect-storm loop (cause runs AOS -> clients, not the reverse)",
+      "Identifies the first AOS crash in crash_timeline as the first domino and points at the session precursor / AOS-to-DB blip rather than the client machines"
+    ]
+  },
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "Run this from my laptop which isn't on the domain, and save the full detail to a file.",
+    "expected_behavior": [
+      "Connects by FQDN matching a *.domain TrustedHosts entry with -Authentication Negotiate (a short name would fail NTLM), and notes the credential prompt needs an interactive window",
+      "Uses -OutFile so full per-host detail goes to a file and only the compact summary prints to stdout",
+      "Does not pass a password on the command line; treats -Credential as a test-only seam"
+    ]
+  }
+]
