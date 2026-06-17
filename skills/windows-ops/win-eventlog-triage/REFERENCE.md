@@ -41,7 +41,14 @@ workflow see [SKILL.md](SKILL.md).
 ## Time handling
 
 `-Hours`/`-Since`/`-From`/`-To` are interpreted in the **local time** of the
-machine running the script and used as `FilterHashtable` `StartTime`/`EndTime`.
+machine running the script. Internally the window is **converted to UTC before it
+crosses the remoting boundary** and **converted back to each target's local time**
+inside the remote block, so a sweep of servers in a different time zone than the
+caller filters the correct window. (A `Kind=Local` `DateTime` passed straight into
+`Invoke-Command -ArgumentList` can have its kind reinterpreted during
+serialization, shifting the window by the offset and silently returning **zero
+events** — this is handled; see the *cross-time-zone* gotcha below.)
+
 All timestamps in the **output** (`first_seen`, `last_seen`, `generated_at`,
 `query.from`/`to`) are normalized to **UTC** with a `Z` suffix so a multi-server
 sweep is unambiguous regardless of each server's time zone.
@@ -227,6 +234,45 @@ registered provider name with
 `(Get-WinEvent -ListProvider '*<keyword>*').Name` before concluding the log
 is clean.
 
+**A clean `0` events can be a lie — cross-time-zone window shift.** If a run returns
+`events_scanned: 0` / empty `groups` with `status: ok` for a host you know is busy,
+do not trust it. The script now passes the window as UTC and converts it to the
+target's local time on the server (fixed), but the symptom is worth knowing: a
+`DateTime` whose `Kind` flips during `Invoke-Command` serialization shifts the
+filter window by the caller↔target time-zone offset, so a real, active log returns
+nothing. **Verify** any surprising 0/low-count result with a direct unfiltered probe
+on the host — `Invoke-Command -ComputerName <h> -Credential <c> { Get-WinEvent -LogName System -MaxEvents 5 }`
+— before reporting "clean". A populated log with a 0-count triage result is the
+tell.
+
+**`Get-WinEvent -ListLog <name>` `LastWriteTime`/`RecordCount` can look frozen.**
+The per-log file metadata is not a reliable "is this log active" signal — it can
+read as the last boot time while events are in fact being written every minute.
+Judge activity by querying actual events (most-recent N), never by `ListLog`
+timestamps.
+
+**The `Get-Credential` prompt needs an interactive console — agent/CI runners
+hang on it.** The script always prompts (by design). When something drives it
+non-interactively (an AI agent's shell tool, a CI step, a background job), the
+GUI/console credential prompt cannot render and the run hangs or aborts. Launch it
+in a **visible** console so the prompt appears, e.g.
+`Start-Process pwsh -ArgumentList '-NoExit','-File','<script>','-ComputerName','SRV01','-OutFile','out.json'`,
+then read the `-OutFile`. (The `-Credential` seam exists for true automation, but
+treat it as test-only — don't put passwords on a command line in anger.)
+
+**Passing multiple hosts through a wrapper: a quoted `"A,B"` is one host.** When a
+launcher passes arguments as an array (e.g. `Start-Process -ArgumentList`), a single
+quoted token `'SRV01,SRV02'` reaches the script as **one** computer name and fails
+to resolve. Pass a real array (`-ComputerName SRV01,SRV02` as separate tokens, or
+build the call with `& '<script>' -ComputerName 'A','B'` inside the launched
+session), or use `-ServerListFile`.
+
+**From a non-domain-joined client, connect by the FQDN that matches your
+TrustedHosts entry.** A short name (`SRV01`) will **not** match a `*.contoso.local`
+TrustedHosts wildcard and falls back to a failed NTLM path; the FQDN
+(`SRV01.contoso.local`) does. Pair the FQDN with `-Authentication Negotiate`. (See
+*Non-domain-joined / cross-domain clients* above for the TrustedHosts setup.)
+
 **Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
 
 ## Verification
@@ -239,6 +285,7 @@ This is a **read-only** triage skill — it does not modify anything on the targ
 - **No truncated hosts.** Check every host in `hosts[]` for `truncated: true`. A truncated host means `Get-WinEvent` hit the `-MaxEvents` cap and silently dropped older events in the window — the oldest slice of the window is simply missing. Do not draw coverage conclusions ("no issues before 03:00") for a truncated host. Surface the flag and narrow the window or raise `-MaxEvents` before concluding.
 - **Time window and log/level scope match the question.** Verify `query.from`/`query.to`, `query.logs`, and `query.levels` against what was asked. A mismatch (e.g., Security log omitted, Warning level excluded, window starts an hour too late) means the answer addresses a different question than the one posed.
 - **Operator-local → UTC conversion is accounted for.** Input parameters (`-Hours`, `-Since`, `-From`/`-To`) are resolved in the operator machine's local time; `query.from`/`query.to` in the output are UTC. Confirm the UTC window in the output actually covers the period the user cares about before proceeding. (See the *Time-window inputs are operator-local* gotcha for an example.)
+- **A clean result on a busy host is suspicious — spot-check it.** If a host returns `events_scanned: 0` or a near-empty group list but you expect activity (it serves users, it was just rebooted, it hosts a chatty role), confirm with a direct `Get-WinEvent -MaxEvents 5` on that host before reporting "clean". See the *cross-time-zone window shift* gotcha — a populated log with a 0-count triage result is the tell.
 - **Establish what normal looks like.** Before labelling something an anomaly, consider whether the provider/event-ID combination is expected background noise in this environment. If a suppress list is in use (`query.suppress_list_applied: true`), known-benign events are already filtered; if not, cross-check unfamiliar high-count entries against the *High event counts are not severity* gotcha before surfacing them as findings.
 
 **Output verification — cross-check findings and confirm remediation.**

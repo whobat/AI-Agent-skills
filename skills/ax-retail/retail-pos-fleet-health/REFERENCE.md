@@ -130,6 +130,23 @@ Warning types, in ranking order: `unreachable`/`auth_failed`, `service_stopped`
   Always wait for the script to complete and parse the final JSON before drawing
   fleet-wide conclusions.
 
+**The `Get-Credential` prompt needs an interactive console — agent/CI runners hang on it.**
+The script always prompts. When something drives it non-interactively (an AI agent's shell
+tool, a CI step, a background job) the credential prompt cannot render and the run hangs or
+aborts. Launch it in a **visible** console and read the `-OutFile`, e.g.
+`Start-Process pwsh -ArgumentList '-NoExit','-File','<script>','-ServerListFile','C:\ops\pos.txt','-OutFile','C:\ops\pos-health.json'`.
+
+**From a non-domain-joined client, connect by FQDN that matches your TrustedHosts entry.**
+A short name (`POS01`) will not match a `*.contoso.local` TrustedHosts wildcard and falls back
+to a failed NTLM path; the FQDN (`POS01.contoso.local`) does. Pair it with
+`-Authentication Negotiate`. Short, comma-separated host lists passed through a launcher's
+argument array as a single quoted token (`'A,B'`) arrive as **one** host — pass a real array
+or use `-ServerListFile`.
+
+**`Get-WinEvent -ListLog` timestamps and `LastBootUpTime`-style file metadata can read stale**
+(frozen at boot) while events are actively being written — judge "is this log active" by
+querying recent events, not by file/log metadata.
+
 **Environment-specific gotchas (local).** At the start of a run, read `gotchas.local.md` in this skill's folder if it exists — it records traps learned in *this* environment (real server/database names, local quirks, naming conventions). When you discover a new environment-specific pitfall here, **append it to `gotchas.local.md`** (not to this file, which must stay generic and company-agnostic). The file is gitignored and is preserved across skill updates, so this skill gets more useful every time it runs in your environment.
 
 ## Verification

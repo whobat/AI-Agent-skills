@@ -4,7 +4,7 @@ description: Triage Windows Event Logs across one or many servers. Pulls Critica
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine and WinRM (PowerShell Remoting) enabled on the target servers
 metadata:
-  version: "1.1.4"
+  version: "1.2.0"
 ---
 
 # Windows Event Log Triage
@@ -16,6 +16,8 @@ metadata:
 ## Credentials (important)
 
 The script **always prompts** for a tier-admin credential via `Get-Credential` — held in memory for that run only, reused across all servers, never written to disk. The user's normal account does not need server access; the prompted credential authenticates the remoting session. Do **not** try to pass a password on the command line. (A `-Credential` parameter exists only as a testing/automation seam.)
+
+> **Agent/non-interactive runners:** `Get-Credential` needs an interactive console. If you drive this from a tool that runs PowerShell non-interactively (an AI agent's shell, CI, a background job) the prompt cannot render and the run hangs. Launch it in a **visible** window and then read the `-OutFile` — e.g. `Start-Process pwsh -ArgumentList '-NoExit','-File','SCRIPT','-ComputerName','SRV01.contoso.local','-OutFile','C:\ops\triage.json'`. From a **non-domain-joined** client, use the **FQDN** (so it matches a `*.domain` TrustedHosts entry — a short name won't) plus `-Authentication Negotiate`. See REFERENCE.md → *Gotchas*.
 
 ## How to run
 

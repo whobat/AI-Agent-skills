@@ -98,6 +98,28 @@ Describe 'Remote scriptblock down-level compatibility' {
   }
 }
 
+Describe 'Time-window remoting safety (cross-time-zone)' {
+  # Regression guard: a Kind=Local DateTime passed across Invoke-Command can have its Kind
+  # reinterpreted, shifting the window by the TZ offset and returning ZERO events on a
+  # target in a different zone. Fix: pass the window as UTC (survives CLIXML unambiguously)
+  # and convert back to the target's local time inside the remote block.
+  BeforeAll {
+    $script:Source = Get-Content (Join-Path $PSScriptRoot 'Invoke-EventLogTriage.ps1') -Raw
+    $m = [regex]::Match($script:Source, '(?s)\$remote\s*=\s*\{(.*?)\n  \}')
+    $script:RemoteBlock = $m.Groups[1].Value
+  }
+
+  It 'passes the window to the remote as UTC (ToUniversalTime in ArgumentList)' {
+    $script:Source | Should -Match '\$StartTime\.ToUniversalTime\(\)'
+    $script:Source | Should -Match '\$EndTime\.ToUniversalTime\(\)'
+  }
+
+  It 'converts the window back to the target''s local time inside the remote block' {
+    $script:RemoteBlock | Should -Match '\$start\s*=\s*\$start\.ToLocalTime\(\)'
+    $script:RemoteBlock | Should -Match '\$end\s*=\s*\$end\.ToLocalTime\(\)'
+  }
+}
+
 Describe 'Resolve-TimeWindow' {
   BeforeAll { $now = [datetime]'2026-06-08T12:00:00' }
 
