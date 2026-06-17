@@ -23,6 +23,10 @@ metadata:
 - Default is **Windows integrated auth**; `-SqlCredential (Get-Credential)` for SQL auth.
 - Needs **VIEW SERVER STATE** + **VIEW DATABASE STATE** (or `db_owner`) in the AX/channel DB.
 - Add `-Encrypt` if the instance has a valid certificate.
+- **From a non-domain-joined operator (or an agent-driven, non-interactive shell):** integrated
+  auth from a workgroup box to a domain SQL instance fails, and a `-SqlCredential`/`Get-Credential`
+  prompt can't render non-interactively. Either run the collector **on the SQL host** over a
+  visible remoting window — `Start-Process pwsh -ArgumentList '-NoExit','-Command',"Invoke-Command -ComputerName SQL01.contoso.local -Credential (Get-Credential) -Authentication Negotiate -FilePath '<SCRIPT>' -ArgumentList ..."` — connecting to `localhost` inside the session, or pass `-SqlCredential` for SQL auth. Use the **FQDN** so it matches a `*.domain` WinRM TrustedHosts entry.
 
 ## How to run
 

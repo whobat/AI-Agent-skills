@@ -245,6 +245,14 @@ function Invoke-HostTriage {
     # Runs ON the target server, whose Windows PowerShell may be old (Server 2008/2012
     # ship PS 2.0-4.0). The static-new constructor syntax is PS 5.0+, so use New-Object
     # here to stay down-level compatible. Keep this whole block to PS 3.0-era constructs.
+    #
+    # TIME WINDOW: $start/$end arrive as UTC (Kind=Utc) - UTC is the one DateTime kind that
+    # survives the Invoke-Command/CLIXML boundary unambiguously. Convert to THIS server's
+    # local time for the FilterHashtable. A Kind=Local DateTime passed across remoting can
+    # have its Kind reinterpreted, silently shifting the window by the time-zone offset and
+    # returning ZERO events on a server in a different zone than the caller.
+    $start = $start.ToLocalTime()
+    $end = $end.ToLocalTime()
     $out = New-Object System.Collections.Generic.List[object]
     $scanned = 0
     $truncated = $false
@@ -282,7 +290,10 @@ function Invoke-HostTriage {
   $invokeArgs = @{
     ComputerName = $Computer
     ScriptBlock  = $remote
-    ArgumentList = @($Logs, $Levels, $StartTime, $EndTime, $MaxEvents, $MaxMessageLength)
+    # Pass the window as UTC: a Kind=Utc DateTime crosses the remoting boundary without
+    # the time-zone-offset shift that silently zeroes results on cross-zone targets. The
+    # remote block converts back to the target's local time. See the remote block comment.
+    ArgumentList = @($Logs, $Levels, $StartTime.ToUniversalTime(), $EndTime.ToUniversalTime(), $MaxEvents, $MaxMessageLength)
     ErrorAction  = 'Stop'
   }
   if ($Credential) { $invokeArgs.Credential = $Credential }
