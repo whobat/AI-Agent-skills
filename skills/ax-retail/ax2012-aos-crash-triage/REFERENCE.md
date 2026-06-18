@@ -30,12 +30,18 @@ Detailed reference for `scripts/Invoke-AosCrashTriage.ps1`. For the agent-facing
 ## What it collects (per host, server-side)
 
 - **AOS service(s):** `Get-Service` where name `AOS60*` or display name `*Object Server*`.
-- **AOS process crashes:** Application **event 1000** whose message names `Ax32Serv.exe`
-  (faulting app/module, exception code, fault offset extracted).
-- **Unexpected terminations:** System **event 7031** mentioning *Object Server*.
-- **Session precursors:** Application **events 110 / 180** from provider `Dynamics Server*`
-  (110 = "Session Allocation Failed: Session N is already allocated"; 180 = "RPC error:
-  Client provided an invalid session ID").
+- **Access violations (`access_violations`):** Application **event 1000** whose message names
+  `Ax32Serv.exe` — faulting app/module, **exception code (decoded)**, fault offset. This is one
+  crash class (`0xc0000005`); the event has **no call stack**.
+- **Forced terminations (`forced_terminations`):** Application **event 110** from provider
+  `Dynamics Server*` ("Session Allocation Failed: Session N is already allocated") — a
+  *separate* crash class where the AOS kernel self-terminates on a session-id collision.
+- **SCM terminations (`scm_terminations`):** System **event 7031** mentioning *Object Server*.
+- **Session symptoms (`session_symptoms`):** Application **event 180** ("RPC error: Client
+  provided an invalid session ID") — **by-design, does not crash the AOS**; collected as context.
+- **Crash-dump readiness (`wer_config` / `dump_readiness`):** the WER `LocalDumps\Ax32Serv.exe`
+  registry config (key present? `DumpType`/`CustomDumpFlags`? dump files on disk?).
+- **Change signals (`recent_hotfixes`, `lastboot`):** hotfixes installed in the last 14 days.
 - **Client crashes (client hosts):** Application **event 1000** naming `Ax32.exe`.
 
 ## Output schema (abridged)
@@ -50,9 +56,13 @@ Detailed reference for `scripts/Invoke-AosCrashTriage.ps1`. For the agent-facing
       "computer": "AOS02", "role": "aos", "status": "ok",
       "aos_services": [ { "Name": "AOS60$01", "Status": "Running", "StartType": "Automatic" } ],
       "lastboot": "2026-05-23T20:32:30Z",
-      "crashes": [ { "t": "2026-06-17T08:33:57Z", "app": "Ax32Serv.exe", "module": "KERNELBASE.dll", "exception": "0xc0000005", "offset": "0x0000000000026ea8" } ],
-      "terminations": [ { "t": "2026-06-17T08:38:18Z" } ],
-      "session_errors": { "count": 11, "first": "…", "last": "…", "by_id": [ { "event_id": 110, "count": 2 }, { "event_id": 180, "count": 9 } ], "sample": "Object Server 01: Session Allocation Failed: Session 277 is already allocated." },
+      "access_violations": [ { "t": "2026-06-17T08:33:57Z", "crash_class": "access_violation", "app": "Ax32Serv.exe", "module": "KERNELBASE.dll", "exception": "0xc0000005", "exception_meaning": "access violation … needs a dump or a correlatable change", "offset": "0x0000000000026ea8" } ],
+      "forced_terminations": [ { "t": "2026-06-17T08:36:00Z", "crash_class": "forced_termination", "message": "Object Server 01: Session Allocation Failed: Session 277 is already allocated.", "note": "… proximate cause of this exit, not the deep root cause." } ],
+      "scm_terminations": [ { "t": "2026-06-17T08:38:18Z" } ],
+      "session_symptoms": { "count": 9, "first": "…", "last": "…", "sample": "… invalid session ID 508", "note": "BY-DESIGN symptom … does NOT crash the AOS - correlation with a crash is not causation." },
+      "dump_readiness": { "ready": false, "note": "WER LocalDumps NOT configured for Ax32Serv.exe …" },
+      "wer_config": { "key_present": false, "dump_type": null, "custom_dump_flags": null, "dump_files": 0 },
+      "recent_hotfixes": [ { "id": "KB5034122", "installed": "2026-06-12T03:00:00Z" } ],
       "events_scanned": 14, "truncated": false
     }
   ],
@@ -61,9 +71,12 @@ Detailed reference for `scripts/Invoke-AosCrashTriage.ps1`. For the agent-facing
   ],
   "summary": {
     "aos_hosts_total": 2, "hosts_failed": 0,
-    "aos_crash_total": 3, "hosts_with_crashes": 2, "session_error_total": 18, "client_crash_total": 96,
-    "crash_timeline": [ { "computer": "AOS02", "type": "aos_crash", "time": "2026-06-17T08:33:57Z", "detail": "0x…26ea8" } ],
-    "cascade_correlation": [ { "aos_event": "AOS02 aos_terminated @ 2026-06-17T08:38:18Z", "client_crashes_in_window": 7, "client_hosts": ["RDS01","RDS03"] } ],
+    "access_violation_total": 1, "forced_termination_total": 2, "session_symptom_total": 9, "client_crash_total": 96,
+    "crash_timeline": [ { "computer": "AOS02", "class": "access_violation", "time": "2026-06-17T08:33:57Z", "detail": "0xc0000005 KERNELBASE.dll" } ],
+    "cascade_correlation": [ { "aos_event": "AOS02 forced_termination @ 2026-06-17T08:36:00Z", "client_crashes_in_window": 7, "client_hosts": ["RDS01","RDS03"] } ],
+    "dump_capture_ready_hosts": 0, "dump_capture_missing": ["AOS02","AOS03"],
+    "recent_hotfix_hosts": ["AOS02"],
+    "caveats": ["CORRELATION IS NOT CAUSATION …", "… different crash classes …", "… session_symptoms are by-design …"],
     "failures": []
   }
 }
@@ -74,38 +87,54 @@ a `note`, without per-host `aos[]`/`clients[]`.
 
 ## AX interpretation guide
 
-| Signal | Likely meaning | What to do |
-|--------|----------------|-----------|
-| `crashes[].offset` **identical** across every crash | A **deterministic AX kernel code path** (e.g. session allocation), not random memory corruption | Treat as a known-class kernel defect; capture a dump (WER LocalDumps for `Ax32Serv.exe`) for Microsoft to name the hotfix |
-| `session_errors` (110/180) seconds **before** a crash | The trigger: **stale/duplicate RPC session IDs** the kernel can't reconcile → it self-terminates | Hunt the orphaned-session source (below); the crash is the symptom |
-| `cascade_correlation` shows many client crashes at an AOS termination time | The clients dropped **because the AOS died** (not a client fault); the reconnect storm can re-trigger the crash | Break the loop with a coordinated AOS restart; don't chase the client machines |
-| Crashes confined to **client** AOS, batch AOS clean | The cascade is driven by interactive RDS-client reconnects | Focus on the client-AOS nodes and the RDS farm, not the batch tier |
-| "Session N is **already allocated**" | Orphaned rows in **`SysClientSessions`** (often left by a brief AOS↔DB network blip); another AOS reuses an in-use ID | Clean orphaned sessions (stop AOS → delete STATUS 0/2/3 → start; stale STATUS=1 needs the cluster briefly down); stabilize the AOS↔DB path |
+**First, classify the crash — the two classes have different causes and must never be merged.**
+
+| Signal | What it means (cause vs symptom) | What to do |
+|--------|----------------------------------|-----------|
+| **`access_violations`** — Event 1000 / `Ax32Serv.exe` / `0xc0000005` | An **unexpected termination** (access violation). The module + offset say *where control was*, **not** which AX code path faulted — the event has **no call stack**. | Look for a **correlatable preceding event or recent change** (`recent_hotfixes`, deployment, schema/compile, kernel drift, config/permissions). If one explains it, validate & fix — no dump needed. If **signature-less**, capture a dump (below) and read the stack. |
+| `access_violations[].offset` **identical** across crashes | A **deterministic code path** (it dies at the same instruction each time) — *consistent with* a known kernel defect, but the offset alone does **not** name it. | Capture a dump → `!analyze -v` → match to a KB, or open a Microsoft case with the dump. |
+| **`forced_terminations`** — Event 110 / "Session Allocation Failed: already allocated" | A **different class**: the AOS kernel **deliberately self-terminates** on a session-id collision. **Proximate** cause of *that* exit; **downstream** of orphaned `SysClientSessions` rows from a prior AOS↔DB interruption / dead cluster node. **Not** a benign artifact, **not** the deep root cause, **not** an access violation. | Inspect `SysServerSessions` (which AOS marked inactive/dead) + `SysClientSessions` (orphaned STATUS 0/2/3). Restart the dead node (clears DB IDs) or, AOS stopped, `DELETE FROM SysClientSessions WHERE status IN (0,2,3)`. Fix the upstream AOS↔DB connectivity. |
+| **`session_symptoms`** — Event 180 / "invalid session ID" | **By design**: a client sent an RPC against a session the AOS already terminated (90s no-ping, ungraceful exit, AOS restart). **Does not crash the AOS.** | Context only. **Never** report as a cause. (Caveat: a *flood* of unreaped sessions can, separately, exhaust the AOS — KB 937873.) |
+| `cascade_correlation` — many client crashes at an AOS-down time | The clients dropped **because the AOS went down** (effect). The reconnect storm can re-trigger a `forced_termination`. | Report as effect; to stop the loop, coordinated AOS restart. The *first* AOS-down event's cause still needs evidence (class + dump/change). |
+| Crashes confined to **client** AOS, batch AOS clean | Consistent with the interactive reconnect cascade — not "only some servers are broken". | Focus on the client-AOS + RDS farm. Overnight batch `DeadlockException`s are a separate matter. |
+| `dump_readiness.ready == false` | WER will **not** capture the next crash. | Emit the remediation (below) so the next `access_violation` is dumpable — the durable path to a real root cause. |
 
 ## Gotchas
 
 These are the AX-specific and operational traps that produce confident-but-wrong conclusions.
 
-**Cause/effect runs AOS → clients, not the reverse.** Seeing ~100 `Ax32.exe` client crashes
-is alarming, but if they cluster at the **same second** across many RDS hosts they are the
-*consequence* of the central AOS terminating, not independent client faults. The
-`cascade_correlation` block exists to make this explicit — read it before blaming the
-clients or the RDS farm. The first domino is the **first** AOS crash in `crash_timeline`; what
-preceded *that* (the 110/180 session errors, or an AOS↔DB blip) is the real trigger.
+**THE BIG ONE — correlation is not causation; do not conflate the two crash classes.** This
+tool exists *because* the obvious read is usually wrong. Event 110 ("Session Allocation Failed")
+and Event 1000 (`0xc0000005`) are **different failure modes**, and Event 180 ("invalid session
+ID") is a by-design symptom that doesn't crash anything. A 110 appearing seconds before a 1000
+does **not** mean the session error caused the access violation — they may be unrelated, or the
+110 may be the *recovery* path of an earlier crash. **Never** emit "root cause: a client
+presented a session ID that already existed." The event log gives you the crash *class* and
+*signature*; the *cause* of a `0xc0000005` comes from a **symbolized dump** or a **change
+correlation**, not from event ordering. (This is the exact mistake an earlier version made.)
 
-**An identical fault offset is a feature, not noise.** When every `crashes[].offset` is the
-same value, that is the strongest signal in the report: the process dies on one specific code
-path every time (deterministic), which points at a kernel defect with a potential Microsoft
-hotfix — *not* at flaky hardware/memory. Do not dismiss repeated identical crashes as
-"random".
+**A symbolized dump is the escalation, not the first move.** Many `0xc0000005` crashes are
+resolved from the event/change timeline alone — DAT/user-group config (KB 2258719), a
+schema-vs-compiled-code mismatch (fix: full compile + synchronize), an outdated `SysLastValue`
+after a deployment, kernel-version drift across AOS/clients, or a Windows-update regression. Try
+that first (use `recent_hotfixes`/`lastboot`). Reach for a dump when a `0xc0000005` has **no**
+correlatable preceding event or change — that is also when Microsoft requires one before issuing
+a hotfix.
 
-**"Session already allocated" is a kernel self-protection kill, and is usually a DB-link
-symptom.** The AX kernel deliberately terminates the AOS when it detects an already-allocated
-session — it is not a memory crash. The orphaned `SysClientSessions` rows that cause it are
-frequently left behind by a **brief AOS↔database network interruption** that is too short to
-log a SQL error or trip an AlwaysOn AG. So "the database looked healthy" does **not** exclude
-the DB/network path as the trigger — check `SysClientSessions` for stale STATUS=1 rows and
-harden the AOS↔DB link.
+**An identical fault offset is suggestive, not conclusive.** When every
+`access_violations[].offset` is the same value, the process dies on one specific instruction each
+time (deterministic) — *consistent with* a kernel defect, but the offset alone **does not name**
+the defect or prove a kernel bug (a config/data condition can also be deterministic). Capture a
+dump and read the stack before attributing it to a specific KB.
+
+**"Session already allocated" (Event 110) is a forced kernel self-termination — the proximate
+cause of THAT exit, but downstream of an upstream condition.** The AOS kernel deliberately kills
+itself on a session-id collision (it is **not** a memory access violation). The orphaned
+`SysClientSessions` rows behind it are frequently left by a **brief AOS↔database interruption**
+too short to log a SQL error or trip an AlwaysOn AG — so "the database looked healthy" does
+**not** exclude the DB/network path. But report it as the *proximate* cause and chase the
+upstream orphan/connectivity condition; do **not** call the collision message itself the root
+cause, and do **not** equate it with a `0xc0000005`.
 
 **Batch AOS vs client AOS — don't expect the same symptoms.** Interactive ("client") AOS take
 the session-collision cascade; batch AOS usually do not (they have no RDS reconnect storm).
@@ -138,26 +167,52 @@ server/instance names, AOS↔DB topology, the specific integration that orphans 
 you discover a new environment-specific pitfall, **append it there**, not to this file (which
 must stay generic and company-agnostic). The file is gitignored and survives skill updates.
 
+## Capturing a crash dump (the durable fix)
+
+When an `access_violation` has no correlatable event/change, this is the only way to a real
+root cause. Configure WER LocalDumps for `Ax32Serv.exe` so the **next** crash is captured with
+the **AX-recommended** custom flags (a mini/full dump omits data the AX analyzer needs):
+
+```powershell
+$k = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\Ax32Serv.exe'
+New-Item -Path $k -Force | Out-Null
+New-ItemProperty -Path $k -Name DumpFolder      -Value 'D:\AOSDumps' -PropertyType ExpandString -Force | Out-Null
+New-ItemProperty -Path $k -Name DumpType        -Value 0  -PropertyType DWord -Force | Out-Null   # 0 = Custom
+New-ItemProperty -Path $k -Name CustomDumpFlags -Value 0x1B67 -PropertyType DWord -Force | Out-Null
+New-ItemProperty -Path $k -Name DumpCount       -Value 5  -PropertyType DWord -Force | Out-Null
+```
+
+GUI alternative needing no registry edit: **DebugDiag** with a crash rule on `Ax32Serv.exe`
+(attaches to current and future AOS instances). After a crash: **copy the dump off production**,
+then `DebugDiag → Start Analysis`, and/or **WinDbg** with
+`_NT_SYMBOL_PATH = srv*C:\symbols*https://msdl.microsoft.com/download/symbols` → `!analyze -v`.
+Full private `Ax32Serv` symbols are Microsoft-internal — if the signature is novel, open a
+Microsoft support case with the dump attached.
+
 ## Verification
 
-**Before drawing conclusions — confirm coverage and ground truth.**
+**Before drawing conclusions — classify, confirm coverage, ground-truth.**
 
+- **Classify the crash before claiming anything.** Decide `access_violation` vs
+  `forced_termination` from the data; never write a root cause that crosses the two classes, and
+  never attribute a crash to `session_symptoms` (Event 180). Quote `summary.caveats`.
+- **Do not state a `0xc0000005` root cause without evidence** — either a correlatable
+  event/change you validated, or a symbolized dump stack. Absent that, say "cause undetermined;
+  dump required" rather than inventing one.
 - **No failed hosts.** Any `summary.failures` entry (`unreachable`/`auth_failed`) means that
   host is absent from the data — relay it and its `hint`; never say "the cluster is clean" with
   a host missing.
 - **No truncated hosts.** `truncated: true` means `Get-WinEvent` hit `-MaxEvents` and older
   events in the window were dropped — narrow the window or raise `-MaxEvents` before concluding.
-- **Spot-check a finding against the raw event.** Before reporting a fault signature or a
-  cascade, open one underlying event on the host (Event Viewer / `Get-WinEvent`) and confirm
-  the timestamp, offset and message match what the JSON implies.
-- **Sanity-check a clean result on a host you expected to be crashing** (see the *clean 0*
-  gotcha).
+- **Spot-check a finding against the raw event.** Confirm the timestamp, offset and message
+  match what the JSON implies.
+- **Sanity-check a clean result on a host you expected to be crashing** (see the *clean 0* gotcha).
 
 **After remediation — re-verify.** Following a coordinated AOS restart, `SysClientSessions`
-cleanup, kernel hotfix, or AOS↔DB network fix, re-run over the same window (or a short post-fix
-window) and confirm no new `1000`/`7031` and that `session_error_total` has dropped. A finding
-that persists means the fix did not take or a separate instance is occurring. **Fail loud** if
-coverage was incomplete — never present a partial sweep as a full one.
+cleanup, kernel hotfix, AOS↔DB fix, or a validated config/deployment fix, re-run over the same
+window and confirm no new events of the relevant class (`access_violation_total` /
+`forced_termination_total` drop to zero). A finding that persists means the fix did not take or a
+separate instance is occurring. **Fail loud** if coverage was incomplete.
 
 ## Testing
 
@@ -165,6 +220,31 @@ coverage was incomplete — never present a partial sweep as a full one.
 Install-Module Pester -MinimumVersion 5.0.0 -Scope CurrentUser
 Invoke-Pester -Path ./scripts/Invoke-AosCrashTriage.Tests.ps1 -Output Detailed
 ```
+
+## Sources (the crash taxonomy this guide encodes)
+
+- Microsoft Dynamics blog — *Possibilities to create memory dumps from crashing processes*
+  (Event 110 forced-termination vs Event 1000 unexpected-termination; WER/DebugDiag):
+  `https://www.microsoft.com/en-us/dynamics-365/blog/no-audience/2010/05/12/possibilities-to-create-memory-dumps-from-crashing-processes/`
+- Microsoft Learn — *Drain users from an AOS* (no user-session reconnect; restart/reset
+  SysServerSessions): `https://learn.microsoft.com/en-us/dynamicsax-2012/appuser-itpro/drain-users-from-an-aos`
+- Microsoft Learn — *Troubleshoot common AOS problems*:
+  `https://learn.microsoft.com/en-us/dynamicsax-2012/appuser-itpro/troubleshoot-common-aos-problems`
+- Microsoft Learn — *RPC exception 1726 occurred in session 10* (KB 937873; Event 180 / invalid
+  session ID is by design): `https://learn.microsoft.com/en-us/previous-versions/troubleshoot/dynamics/ax/rpc-exception-1726-occurred-in-session-10-error-when-reviewing-application-log`
+- Microsoft Learn — *AOS crashes using temporary tables in EP* (KB 2258719: a `0xc0000005`
+  root-caused from events + config, no dump): `https://learn.microsoft.com/en-us/previous-versions/troubleshoot/dynamics/ax/application-object-server-crashes-when-using-temporary-tables-in-ep`
+- Microsoft Learn — *Collecting user-mode dumps* (WER LocalDumps registry):
+  `https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps`
+- Microsoft Support — *AOS crashes with the Ax32Serv DBDPack call stack* (a named-stack hotfix):
+  `https://support.microsoft.com/en-us/topic/the-application-object-server-aos-crashes-with-the-ax32serv-dbdpack-call-stack-in-microsoft-dynamics-ax-2012-6390ab86-38d7-3732-a64b-060f49647e3e`
+- Dynamics Community (forum 4b05f31a) — *Session Allocation Failed: already allocated*
+  (orphaned `SysClientSessions` from an AOS↔DB blip → second AOS crash; fix = restart dead node):
+  `https://community.dynamics.com/forums/thread/details/?threadid=4b05f31a-1ec0-47f1-b5fa-028136f3dfad`
+- DynamicsUser.net — *AOS crashing in AX 2012 R3 after KB4058327 / 6.3.6000.4155* (a CU
+  regression — validate kernel updates): `https://www.dynamicsuser.net/t/aos-crashing-in-ax-2012-r3-after-installing-kb4058327-6-3-6000-4155/65232`
+- daxdilip.blogspot.com — *How to troubleshoot an AOS crash using a crash dump* (WinDbg/DebugDiag
+  walkthrough): `https://daxdilip.blogspot.com/2016/01/how-to-troubleshoot-aos-crash-using.html`
 
 Tests cover the pure logic (host-list parsing, fault-field extraction, AOS/client
 classification, timeline build, cascade correlation, host shaping, status/compact),

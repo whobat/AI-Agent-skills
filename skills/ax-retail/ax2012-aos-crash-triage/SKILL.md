@@ -4,7 +4,7 @@ description: Triage Microsoft Dynamics AX 2012 / R3 AOS (Ax32Serv.exe) crashes a
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine and WinRM (PowerShell Remoting) enabled on the AOS and client/RDS hosts. Read-only; needs a credential that can read the System + Application logs and query services on the targets.
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # AX 2012 AOS Crash & Session-Cascade Triage
@@ -21,13 +21,17 @@ metadata:
 ## Why this skill (vs the generic event-log triage)
 
 A `win-eventlog-triage` sweep shows *that* there are 7031/1000 errors. This skill encodes the
-**AX-specific crash chain** and does the work that turns symptoms into a root cause:
+**AX-specific crash taxonomy** and gathers the evidence needed to root-cause correctly instead
+of guessing:
 
-- pulls the exact AX signatures (Ax32Serv fault offset/exception, Dynamics Server 110/180
-  session-allocation precursors) and the AOS service state in one shot, and
-- **correlates each AOS termination with simultaneous Ax32.exe client crashes** across the
-  RDS farm — the signature of the cascade (clients on many hosts dying at the *same second*
-  means the central AOS dropped them, not a client-side fault).
+- **separates the two crash classes** — Event 1000 `0xc0000005` access violations vs Event 110
+  "Session Allocation Failed" forced terminations — and labels Event 180 as a by-design symptom,
+  so they are never conflated into a false "session caused the crash" story;
+- pulls the fault signature (module/exception/offset) **and** the **crash-dump readiness** for
+  `Ax32Serv.exe` (WER LocalDumps) plus recent **change signals** (hotfixes, boot) — because the
+  honest root cause comes from a dump or a change-correlation, not from event timing; and
+- **correlates each AOS-down event with Ax32.exe client crashes** across the RDS farm to show the
+  cascade as an *effect* (the AOS dropped the clients), not to assert what triggered the first crash.
 
 ## Credentials
 
@@ -68,25 +72,50 @@ pwsh -File SCRIPT -AosListFile C:\ops\aos.txt -ClientListFile C:\ops\rds.txt -Ho
   incl. `crash_timeline`, `cascade_correlation`, `failures`) on stdout. Prefer `-OutFile` for
   big sweeps.
 
-Key fields: `summary.crash_timeline` (merged AOS crashes + terminations, time-sorted),
-`summary.cascade_correlation` (per AOS event: how many client crashes fell within
-`CascadeWindowSeconds`, and on which hosts), `summary.aos_crash_total` /
-`session_error_total` / `client_crash_total`, and per-host `aos[]` (crashes with fault
-offset/exception, terminations, `session_errors`) + `clients[]`. All times are **UTC** (`Z`).
-See [REFERENCE.md](REFERENCE.md) for the full schema and the AX-interpretation guide.
+Key fields: `summary.crash_timeline` (AOS-down events tagged by `class`:
+`access_violation` / `forced_termination` / `scm_7031`, time-sorted), `summary.cascade_correlation`
+(per AOS event: client crashes within `CascadeWindowSeconds`), the per-class totals
+(`access_violation_total`, `forced_termination_total`, `session_symptom_total`,
+`client_crash_total`), `summary.dump_capture_ready_hosts` / `dump_capture_missing`, and
+`summary.caveats` (the correlation-not-causation guardrails). Per-host `aos[]` carries
+`access_violations` (with `exception_meaning`/`offset`), `forced_terminations`,
+`scm_terminations`, `session_symptoms` (labelled by-design), `dump_readiness`/`wer_config`, and
+`recent_hotfixes`. All times are **UTC** (`Z`). See [REFERENCE.md](REFERENCE.md) for the full
+schema and the AX-interpretation guide.
 
 ## What you (the agent) do with the result
 
+> **Golden rule: report correlation, not causation.** The event log can tell you the crash
+> *class* and *signature*, not which code path faulted. Never output "root cause: a client
+> presented a session ID that already existed." Read `summary.caveats` before writing anything.
+
 1. **Run the script**, parse the JSON.
-2. **Lead with the crash chain:** which AOS crashed, when, the fault signature (e.g.
-   `Ax32Serv.exe 0xc0000005 @ offset 0x…`), and whether the offset is **identical across
-   crashes** (deterministic kernel code path, not random memory corruption).
-3. **State the cascade if present:** if `cascade_correlation` shows client crashes clustered at
-   AOS termination times, say so plainly — "AOS X terminated at T; N clients across M RDS hosts
-   dropped within seconds" — and explain the reconnect-storm loop.
-4. **Surface the precursor:** the Dynamics Server 110/180 `session_errors` immediately before a
-   crash are the trigger signature (stale/duplicate RPC session IDs).
-5. **Fail loud:** list any host in `summary.failures` (unreachable/auth_failed) and any
+2. **Classify the crash first** (`summary.crash_timeline` is tagged by `class`):
+   - **`access_violation`** (Event 1000 / `0xc0000005`): report the fault signature
+     (`module`, `exception`, `exception_meaning`, `offset`) and whether the offset is
+     **identical across crashes** (deterministic code path). The event has **no call stack** —
+     you cannot name the faulting AX code from it.
+   - **`forced_termination`** (Event 110 / "Session Allocation Failed: already allocated"): the
+     AOS kernel **deliberately self-terminated** on a session-id collision. This is the
+     *proximate* cause of that exit, but it is **downstream** of orphaned `SysClientSessions`
+     rows from a prior AOS↔DB interruption / dead cluster node — investigate **that**, not the
+     collision message. It is a **different crash class** from an access violation.
+3. **Treat `session_symptoms` (Event 180) as by-design**, never as a cause — they don't crash
+   the AOS.
+4. **State the cascade as correlation:** if `cascade_correlation` shows client crashes clustered
+   at AOS-down times, report it as "clients dropped when AOS X went down" (effect), and note the
+   reconnect-storm can re-trigger a `forced_termination` — but the *first* AOS-down event's cause
+   still needs evidence.
+5. **Drive to evidence, not a guess:**
+   - Check `aos[].dump_readiness` — if WER LocalDumps isn't configured for `Ax32Serv.exe`,
+     give the remediation so the **next** crash is captured (this is the durable fix).
+   - Check `aos[].recent_hotfixes` / `lastboot` — many `0xc0000005` crashes are a
+     config/deployment/Windows-update regression, found by **change correlation**, not a dump.
+   - Decision gate: `forced_termination` → fix orphaned sessions / the AOS↔DB link first;
+     `access_violation` with a correlatable change → validate that; **signature-less
+     `access_violation` → capture a dump and analyse the symbolized stack** (WinDbg `!analyze -v`
+     / DebugDiag), or open a Microsoft case with the dump.
+6. **Fail loud:** list any host in `summary.failures` (unreachable/auth_failed) and any
    `truncated: true` host — never imply full coverage.
 
 ## Gotchas
