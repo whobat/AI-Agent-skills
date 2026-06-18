@@ -384,6 +384,29 @@ function Format-ClientHost {
   }
 }
 
+# Fan a host list out to Invoke-HostCollect in parallel. The -Parallel runspaces cannot see
+# script functions, so Invoke-HostCollect + Get-FailureClassification are re-hydrated from their
+# source text passed in as -FuncDef/-ClsDef.
+# IMPORTANT: the ForEach-Object -Parallel loop must live DIRECTLY in a function body for the
+# $using: variables to resolve. A loop wrapped in a scriptblock invoked with '& $sb' throws
+# "A Using variable cannot be retrieved" at runtime (fixed in v1.1.1; not caught by unit tests
+# because mocks can't cross -Parallel runspaces).
+function Invoke-FleetCollect {
+  param(
+    [string[]]$Targets, [pscredential]$Credential, [int]$Hours, [int]$MaxEvents,
+    [int]$MaxMessageLength, [int]$ThrottleLimit, [switch]$UseSSL, [string]$Authentication,
+    [string]$FuncDef, [string]$ClsDef
+  )
+  if (-not $Targets -or @($Targets).Count -eq 0) { return @() }
+  @($Targets | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
+      ${function:Get-FailureClassification} = $using:ClsDef
+      ${function:Invoke-HostCollect} = $using:FuncDef
+      Invoke-HostCollect -Computer $_ -Credential $using:Credential -Hours $using:Hours `
+        -MaxEvents $using:MaxEvents -MaxMessageLength $using:MaxMessageLength `
+        -UseSSL:$using:UseSSL -Authentication $using:Authentication
+    })
+}
+
 # ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
@@ -406,20 +429,14 @@ function Invoke-AosCrashTriage {
 
   $funcDef = ${function:Invoke-HostCollect}.ToString()
   $clsDef = ${function:Get-FailureClassification}.ToString()
-
-  $collect = {
-    param($targets)
-    $targets | ForEach-Object -ThrottleLimit $using:ThrottleLimit -Parallel {
-      ${function:Get-FailureClassification} = $using:clsDef
-      ${function:Invoke-HostCollect} = $using:funcDef
-      Invoke-HostCollect -Computer $_ -Credential $using:cred -Hours $using:Hours `
-        -MaxEvents $using:MaxEvents -MaxMessageLength $using:MaxMessageLength `
-        -UseSSL:$using:UseSSL -Authentication $using:Authentication
-    }
+  $collectArgs = @{
+    Credential = $cred; Hours = $Hours; MaxEvents = $MaxEvents; MaxMessageLength = $MaxMessageLength
+    ThrottleLimit = $ThrottleLimit; UseSSL = $UseSSL; Authentication = $Authentication
+    FuncDef = $funcDef; ClsDef = $clsDef
   }
 
-  $aosRaw = @(& $collect $aosTargets)
-  $clientRaw = if ($clientTargets.Count) { @(& $collect $clientTargets) } else { @() }
+  $aosRaw = @(Invoke-FleetCollect -Targets $aosTargets @collectArgs)
+  $clientRaw = @(Invoke-FleetCollect -Targets $clientTargets @collectArgs)
 
   $aosHosts = @($aosRaw | ForEach-Object { Format-AosHost -Raw $_ })
   $clientHosts = @($clientRaw | ForEach-Object { Format-ClientHost -Raw $_ })
