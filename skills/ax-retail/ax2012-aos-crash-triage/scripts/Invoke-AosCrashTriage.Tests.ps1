@@ -30,15 +30,43 @@ Describe 'Read-HostListFile / Resolve-Hosts' {
 }
 
 Describe 'Get-FaultFields' {
-  It 'extracts app/module/exception/offset from a 1000 message' {
+  It 'extracts app/module/exception/offset and decodes the exception class' {
     $f = Get-FaultFields $script:AosMsg
     $f.app | Should -Be 'Ax32Serv.exe'
     $f.module | Should -Be 'KERNELBASE.dll'
     $f.exception | Should -Be '0xc0000005'
+    $f.exception_meaning | Should -Match 'access violation'
     $f.offset | Should -Be '0x0000000000026ea8'
   }
   It 'returns nulls for a non-matching message' {
     (Get-FaultFields 'nothing here').app | Should -BeNullOrEmpty
+  }
+}
+
+Describe 'Get-ExceptionMeaning' {
+  It 'decodes the common AOS exception codes' {
+    (Get-ExceptionMeaning '0xc0000005') | Should -Match 'access violation'
+    (Get-ExceptionMeaning '0xc0000374') | Should -Match 'heap corruption'
+    (Get-ExceptionMeaning '0xdeadbeef') | Should -Match 'reference'
+  }
+}
+
+Describe 'Get-DumpReadiness' {
+  It 'flags not-ready when WER LocalDumps is absent' {
+    (Get-DumpReadiness $null).ready | Should -BeFalse
+    (Get-DumpReadiness ([pscustomobject]@{ key_present = $false })).ready | Should -BeFalse
+  }
+  It 'recognises the AX-recommended DumpType=0 / CustomDumpFlags=0x1B67 config' {
+    $w = [pscustomobject]@{ key_present = $true; dump_type = '0'; custom_dump_flags = '0x1B67' }
+    $r = Get-DumpReadiness $w
+    $r.ready | Should -BeTrue
+    $r.note | Should -Match '0x1B67'
+  }
+  It 'warns when a mini/full dump type is configured instead' {
+    $w = [pscustomobject]@{ key_present = $true; dump_type = '2'; custom_dump_flags = $null }
+    $r = Get-DumpReadiness $w
+    $r.ready | Should -BeTrue
+    $r.note | Should -Match 'DumpType=2'
   }
 }
 
@@ -54,16 +82,16 @@ Describe 'Test-IsAosCrash / Test-IsClientCrash' {
 }
 
 Describe 'Build-CrashTimeline' {
-  It 'merges crashes + terminations across hosts, sorted by time' {
+  It 'merges the two crash classes + SCM terminations, sorted by time, tagged by class' {
     $aos = @(
-      [pscustomobject]@{ computer = 'A'; crashes = @([pscustomobject]@{ t = '2026-06-17T09:03:00Z'; offset = '0x1' }); terminations = @([pscustomobject]@{ t = '2026-06-17T09:11:00Z' }) }
-      [pscustomobject]@{ computer = 'B'; crashes = @([pscustomobject]@{ t = '2026-06-17T08:33:00Z'; offset = '0x1' }); terminations = @() }
+      [pscustomobject]@{ computer = 'A'; access_violations = @([pscustomobject]@{ t = '2026-06-17T09:03:00Z'; exception = '0xc0000005'; module = 'KERNELBASE.dll' }); forced_terminations = @([pscustomobject]@{ t = '2026-06-17T09:11:00Z' }); scm_terminations = @() }
+      [pscustomobject]@{ computer = 'B'; access_violations = @([pscustomobject]@{ t = '2026-06-17T08:33:00Z'; exception = '0xc0000005'; module = 'x' }); forced_terminations = @(); scm_terminations = @() }
     )
     $tl = @(Build-CrashTimeline -AosHosts $aos)
     $tl.Count | Should -Be 3
-    $tl[0].computer | Should -Be 'B'           # earliest first
-    $tl[0].type | Should -Be 'aos_crash'
-    $tl[-1].type | Should -Be 'aos_terminated'
+    $tl[0].computer | Should -Be 'B'                 # earliest first
+    $tl[0].class | Should -Be 'access_violation'
+    (@($tl | Where-Object { $_.class -eq 'forced_termination' })).Count | Should -Be 1
   }
 }
 
@@ -86,9 +114,10 @@ Describe 'Get-CascadeCorrelation' {
 }
 
 Describe 'Format-AosHost' {
-  It 'splits AOS crashes, terminations and session precursors out of raw records' {
+  It 'keeps the two crash classes separate and labels Event 180 as a by-design symptom' {
     $raw = [pscustomobject]@{
       computer = 'AOS01'; status = 'ok'; error = $null; hint = $null; services = @(); lastboot = $null
+      wer = [pscustomobject]@{ key_present = $false }; hotfixes = @()
       events_scanned = 4; truncated = $false
       records = @(
         [pscustomobject]@{ Log = 'Application'; Id = 1000; Provider = 'Application Error'; TimeUtc = '2026-06-17T09:03:00Z'; Msg = $script:AosMsg }
@@ -99,11 +128,20 @@ Describe 'Format-AosHost' {
     }
     $h = Format-AosHost -Raw $raw
     $h.role | Should -Be 'aos'
-    @($h.crashes).Count | Should -Be 1
-    $h.crashes[0].offset | Should -Be '0x0000000000026ea8'
-    @($h.terminations).Count | Should -Be 1
-    $h.session_errors.count | Should -Be 2
-    ($h.session_errors.by_id | Where-Object event_id -eq 110).count | Should -Be 1
+    # Event 1000 -> access_violation (distinct class), with the offset preserved
+    @($h.access_violations).Count | Should -Be 1
+    $h.access_violations[0].crash_class | Should -Be 'access_violation'
+    $h.access_violations[0].offset | Should -Be '0x0000000000026ea8'
+    # Event 110 -> forced_termination, NOT merged with the access violation
+    @($h.forced_terminations).Count | Should -Be 1
+    $h.forced_terminations[0].note | Should -Match 'not the deep root cause'
+    # Event 7031 -> scm termination
+    @($h.scm_terminations).Count | Should -Be 1
+    # Event 180 -> by-design symptom bucket, explicitly labelled
+    $h.session_symptoms.count | Should -Be 1
+    $h.session_symptoms.note | Should -Match 'BY-DESIGN'
+    # dump readiness surfaced (WER absent here)
+    $h.dump_readiness.ready | Should -BeFalse
   }
 }
 

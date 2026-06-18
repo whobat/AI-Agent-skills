@@ -73,15 +73,32 @@ function Resolve-Hosts {
   $list | Select-Object -Unique
 }
 
-# Extract the faulting-application fields from an Application event 1000 message.
+# Plain-English meaning of a Windows exception code (the crash *class*, not its cause).
+function Get-ExceptionMeaning {
+  param([string]$Code)
+  switch -regex ([string]$Code) {
+    '0xc0000005' { 'access violation (read/write to invalid memory) - needs a dump or a correlatable change to find the faulting code path' ; break }
+    '0xc0000374' { 'heap corruption - often a kernel/CU defect (e.g. KB4058327 regression)'; break }
+    '0xc0000409' { 'stack buffer overrun (fast-fail)'; break }
+    '0xc00000fd' { 'stack overflow (e.g. unbounded recursion)'; break }
+    '0xe0434352' { '.NET/CLR unhandled managed exception'; break }
+    default      { 'see Windows exception-code reference' }
+  }
+}
+
+# Extract the faulting-application fields from an Application event 1000 message, with the
+# exception class decoded. NOTE: module + offset localise WHERE control was, not WHICH AX code
+# path caused the fault - the event carries no call stack. Do not infer a cause from this alone.
 function Get-FaultFields {
   param([string]$Message)
   $m = [string]$Message
+  $code = if ($m -match 'Exception code:\s*(0x[0-9a-fA-F]+)') { $Matches[1] } else { $null }
   [pscustomobject]@{
-    app       = if ($m -match 'Faulting application name:\s*([^,]+)') { $Matches[1].Trim() } else { $null }
-    module    = if ($m -match 'Faulting module name:\s*([^,]+)') { $Matches[1].Trim() } else { $null }
-    exception = if ($m -match 'Exception code:\s*(0x[0-9a-fA-F]+)') { $Matches[1] } else { $null }
-    offset    = if ($m -match 'Fault offset:\s*(0x[0-9a-fA-F]+)') { $Matches[1] } else { $null }
+    app               = if ($m -match 'Faulting application name:\s*([^,]+)') { $Matches[1].Trim() } else { $null }
+    module            = if ($m -match 'Faulting module name:\s*([^,]+)') { $Matches[1].Trim() } else { $null }
+    exception         = $code
+    exception_meaning = if ($code) { Get-ExceptionMeaning $code } else { $null }
+    offset            = if ($m -match 'Fault offset:\s*(0x[0-9a-fA-F]+)') { $Matches[1] } else { $null }
   }
 }
 
@@ -90,12 +107,18 @@ function Test-IsAosCrash { param([string]$Message) [bool]([string]$Message -matc
 # True when a 1000 message is an AX rich-client crash.
 function Test-IsClientCrash { param([string]$Message) [bool]([string]$Message -match 'Ax32\.exe') }
 
-# Build a merged, time-sorted AOS crash/termination timeline from per-host AOS results.
+# Build a merged, time-sorted timeline of AOS-down events, tagged by crash CLASS so the two
+# distinct failure modes are never conflated:
+#   access_violation     - Event 1000 / 0xc0000005 (faulting-module signature; no call stack)
+#   forced_termination   - Event 110 / "Session Allocation Failed: already allocated" (the AOS
+#                          kernel deliberately self-terminates on a session-ID collision)
+#   scm_7031             - SCM noticed the service died (class unknown from this event alone)
 function Build-CrashTimeline {
   param([object[]]$AosHosts)
   $rows = foreach ($h in $AosHosts) {
-    foreach ($c in @($h.crashes)) { [pscustomobject]@{ computer = $h.computer; type = 'aos_crash'; time = $c.t; detail = $c.offset } }
-    foreach ($t in @($h.terminations)) { [pscustomobject]@{ computer = $h.computer; type = 'aos_terminated'; time = $t.t; detail = $null } }
+    foreach ($c in @($h.access_violations)) { [pscustomobject]@{ computer = $h.computer; class = 'access_violation'; time = $c.t; detail = "$($c.exception) $($c.module)" } }
+    foreach ($f in @($h.forced_terminations)) { [pscustomobject]@{ computer = $h.computer; class = 'forced_termination'; time = $f.t; detail = 'session-id collision (Event 110)' } }
+    foreach ($t in @($h.scm_terminations)) { [pscustomobject]@{ computer = $h.computer; class = 'scm_7031'; time = $t.t; detail = $null } }
   }
   @($rows | Where-Object { $_.time } | Sort-Object time)
 }
@@ -112,11 +135,23 @@ function Get-CascadeCorrelation {
         [math]::Abs(($ct - $t0).TotalSeconds) -le $WindowSeconds
       })
     [pscustomobject]@{
-      aos_event              = "$($evt.computer) $($evt.type) @ $($evt.time)"
+      aos_event              = "$($evt.computer) $($evt.class) @ $($evt.time)"
       client_crashes_in_window = $near.Count
       client_hosts             = @($near | Select-Object -ExpandProperty computer -Unique)
     }
   }
+}
+
+# Parse the WER LocalDumps registry config for Ax32Serv.exe into a readiness verdict.
+# Microsoft AX guidance: DumpType=0 (Custom) with CustomDumpFlags=0x1B67 (NOT mini=1 / full=2).
+function Get-DumpReadiness {
+  param($Wer)
+  if (-not $Wer -or -not $Wer.key_present) {
+    return [pscustomobject]@{ ready = $false; note = 'WER LocalDumps NOT configured for Ax32Serv.exe - the next crash will not be captured. Configure it now (see remediation) so a signature-less access violation can be dumped.' }
+  }
+  $custom = ("$($Wer.dump_type)" -eq '0' -and ("$($Wer.custom_dump_flags)" -match '6999$|0x1B67'))
+  if ($custom) { return [pscustomobject]@{ ready = $true; note = 'WER LocalDumps configured with the AX-recommended DumpType=0 / CustomDumpFlags=0x1B67.' } }
+  [pscustomobject]@{ ready = $true; note = "WER LocalDumps present but DumpType=$($Wer.dump_type) - AX analysis wants DumpType=0 with CustomDumpFlags=0x1B67 (mini/full omit data the AX analyzer needs)." }
 }
 
 function Get-FailureClassification {
@@ -235,7 +270,35 @@ function Invoke-HostCollect {
             }))
       }
     }
-    New-Object psobject -Property @{ Services = $svc; LastBootUtc = $boot; Records = $out.ToArray(); Scanned = $scanned; Truncated = $truncated }
+    # WER LocalDumps readiness for Ax32Serv.exe - so the NEXT crash can be captured for a
+    # symbolized stack. This is the evidence-based path, replacing event-log guesswork.
+    $wer = New-Object psobject -Property @{ key_present = $false; dump_folder = $null; dump_type = $null; custom_dump_flags = $null; dump_count = $null; dump_files = 0 }
+    try {
+      $werKey = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\Ax32Serv.exe'
+      if (Test-Path $werKey) {
+        $p = Get-ItemProperty -Path $werKey -ErrorAction Stop
+        $wer.key_present = $true
+        $wer.dump_folder = "$($p.DumpFolder)"
+        $wer.dump_type = "$($p.DumpType)"
+        $wer.custom_dump_flags = if ($null -ne $p.CustomDumpFlags) { ('0x{0:X}' -f [int]$p.CustomDumpFlags) } else { $null }
+        $wer.dump_count = "$($p.DumpCount)"
+        if ($p.DumpFolder -and (Test-Path ([System.Environment]::ExpandEnvironmentVariables("$($p.DumpFolder)")))) {
+          $wer.dump_files = @(Get-ChildItem -Path ([System.Environment]::ExpandEnvironmentVariables("$($p.DumpFolder)")) -Filter '*.dmp' -ErrorAction SilentlyContinue).Count
+        }
+      }
+    } catch { }
+
+    # Change-correlation signal: hotfixes installed in the last 14 days (a 0xc0000005 is often a
+    # config/deployment/Windows-update regression, not a session collision).
+    $hotfix = @()
+    try {
+      $cut = (Get-Date).AddDays(-14)
+      $hotfix = Get-HotFix -ErrorAction Stop |
+        Where-Object { $_.InstalledOn -and $_.InstalledOn -gt $cut } |
+        ForEach-Object { New-Object psobject -Property @{ id = "$($_.HotFixID)"; installed = $_.InstalledOn.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } }
+    } catch { }
+
+    New-Object psobject -Property @{ Services = $svc; LastBootUtc = $boot; Wer = $wer; Hotfixes = @($hotfix); Records = $out.ToArray(); Scanned = $scanned; Truncated = $truncated }
   }
 
   $invokeArgs = @{
@@ -252,44 +315,57 @@ function Invoke-HostCollect {
     $r = Invoke-Command @invokeArgs
     return [pscustomobject]@{
       computer = $Computer; status = 'ok'; error = $null; hint = $null
-      services = @($r.Services); lastboot = $r.LastBootUtc
+      services = @($r.Services); lastboot = $r.LastBootUtc; wer = $r.Wer; hotfixes = @($r.Hotfixes)
       records  = @($r.Records); events_scanned = $r.Scanned; truncated = $r.Truncated
     }
   } catch {
     $cls = Get-FailureClassification -Message $_.Exception.Message
     return [pscustomobject]@{
       computer = $Computer; status = $cls.status; error = $_.Exception.Message; hint = $cls.hint
-      services = @(); lastboot = $null; records = @(); events_scanned = 0; truncated = $false
+      services = @(); lastboot = $null; wer = $null; hotfixes = @(); records = @(); events_scanned = 0; truncated = $false
     }
   }
 }
 
-# Shape a raw AOS host-collect result into the AOS output object.
+# Shape a raw AOS host-collect result into the AOS output object. CRASH CLASSES ARE KEPT
+# SEPARATE - they have different causes and must never be conflated:
+#   access_violations  (Event 1000 / Ax32Serv 0xc0000005) - unexpected termination; no call
+#                       stack in the event -> capture a dump or correlate a change to find cause.
+#   forced_terminations(Event 110 / Dynamics Server "Session Allocation Failed: already
+#                       allocated") - the AOS kernel self-terminates on a session-ID collision;
+#                       proximate cause of THIS exit, downstream of orphaned SysClientSessions
+#                       (from a prior AOS<->DB blip / dead cluster node). NOT a benign artifact,
+#                       NOT the deep root cause, and NOT the same thing as an access violation.
+#   session_symptoms   (Event 180 / "invalid session ID") - BY DESIGN: a client RPC against a
+#                       session the AOS already terminated. Does NOT crash the AOS by itself.
 function Format-AosHost {
   param([Parameter(Mandatory)]$Raw)
   $recs = @($Raw.records)
-  $crashes = foreach ($r in ($recs | Where-Object { $_.Id -eq 1000 -and (Test-IsAosCrash $_.Msg) })) {
+  $av = foreach ($r in ($recs | Where-Object { $_.Id -eq 1000 -and (Test-IsAosCrash $_.Msg) })) {
     $f = Get-FaultFields $r.Msg
-    [pscustomobject]@{ t = $r.TimeUtc; app = $f.app; module = $f.module; exception = $f.exception; offset = $f.offset }
+    [pscustomobject]@{ t = $r.TimeUtc; crash_class = 'access_violation'; app = $f.app; module = $f.module; exception = $f.exception; exception_meaning = $f.exception_meaning; offset = $f.offset }
   }
-  $terms = foreach ($r in ($recs | Where-Object { $_.Id -eq 7031 -and $_.Msg -match 'Object Server' })) {
+  $forced = foreach ($r in ($recs | Where-Object { $_.Id -eq 110 -and $_.Provider -like 'Dynamics Server*' })) {
+    [pscustomobject]@{ t = $r.TimeUtc; crash_class = 'forced_termination'; message = ($r.Msg -split "`r?`n")[0]; note = 'AOS kernel self-terminated on a session-id collision; investigate orphaned SysClientSessions / a prior AOS<->DB interruption upstream - this is the proximate cause of this exit, not the deep root cause.' }
+  }
+  $scm = foreach ($r in ($recs | Where-Object { $_.Id -eq 7031 -and $_.Msg -match 'Object Server' })) {
     [pscustomobject]@{ t = $r.TimeUtc }
   }
-  $sess = @($recs | Where-Object { ($_.Id -eq 110 -or $_.Id -eq 180) -and $_.Provider -like 'Dynamics Server*' })
-  $sessSummary = if ($sess.Count) {
-    $sorted = $sess | Sort-Object t
+  $sym = @($recs | Where-Object { $_.Id -eq 180 -and $_.Provider -like 'Dynamics Server*' })
+  $symSummary = if ($sym.Count) {
+    $sorted = $sym | Sort-Object t
     [pscustomobject]@{
-      count = $sess.Count
-      first = $sorted[0].TimeUtc
-      last  = $sorted[-1].TimeUtc
-      by_id = @($sess | Group-Object Id | ForEach-Object { [pscustomobject]@{ event_id = [int]$_.Name; count = $_.Count } })
+      count = $sym.Count; first = $sorted[0].TimeUtc; last = $sorted[-1].TimeUtc
       sample = ($sorted[0].Msg -split "`r?`n")[0]
+      note = 'BY-DESIGN symptom (client RPC against an already-terminated session). Does NOT crash the AOS - correlation with a crash is not causation.'
     }
   } else { $null }
   [pscustomobject]@{
     computer = $Raw.computer; role = 'aos'; status = $Raw.status; error = $Raw.error; hint = $Raw.hint
     aos_services = @($Raw.services); lastboot = $Raw.lastboot
-    crashes = @($crashes); terminations = @($terms); session_errors = $sessSummary
+    access_violations = @($av); forced_terminations = @($forced); scm_terminations = @($scm)
+    session_symptoms = $symSummary
+    dump_readiness = (Get-DumpReadiness $Raw.wer); wer_config = $Raw.wer; recent_hotfixes = @($Raw.hotfixes)
     events_scanned = $Raw.events_scanned; truncated = $Raw.truncated
   }
 }
@@ -354,9 +430,20 @@ function Invoke-AosCrashTriage {
 
   $allHosts = @($aosHosts + $clientHosts)
   $failures = @($allHosts | Where-Object { $_.status -ne 'ok' } | Select-Object computer, role, status, error, hint)
-  $aosCrashTotal = @($aosHosts | ForEach-Object { @($_.crashes).Count } | Measure-Object -Sum).Sum
-  $sessTotal = @($aosHosts | ForEach-Object { if ($_.session_errors) { $_.session_errors.count } else { 0 } } | Measure-Object -Sum).Sum
+  $avTotal = @($aosHosts | ForEach-Object { @($_.access_violations).Count } | Measure-Object -Sum).Sum
+  $forcedTotal = @($aosHosts | ForEach-Object { @($_.forced_terminations).Count } | Measure-Object -Sum).Sum
+  $symTotal = @($aosHosts | ForEach-Object { if ($_.session_symptoms) { $_.session_symptoms.count } else { 0 } } | Measure-Object -Sum).Sum
   $clientCrashTotal = @($clientHosts | ForEach-Object { $_.client_crash_count } | Measure-Object -Sum).Sum
+  $dumpReady = @($aosHosts | Where-Object { $_.dump_readiness -and $_.dump_readiness.ready })
+  $dumpMissing = @($aosHosts | Where-Object { $_.status -eq 'ok' -and -not ($_.dump_readiness -and $_.dump_readiness.ready) } | Select-Object -ExpandProperty computer)
+
+  $caveats = @(
+    'CORRELATION IS NOT CAUSATION. Event timing alone cannot identify the faulting code path or prove which event triggered a crash.',
+    'access_violation (Event 1000 / 0xc0000005) and forced_termination (Event 110 / session-id collision) are DIFFERENT crash classes with different causes - do not merge them.',
+    'session_symptoms (Event 180 / invalid session ID) are BY DESIGN and do not crash the AOS; never report them as a root cause.',
+    'For a forced_termination: investigate orphaned SysClientSessions / a prior AOS<->DB interruption (the upstream cause), not the collision message itself.',
+    'For an access_violation with no correlatable preceding event or recent change: capture a crash dump (WER LocalDumps DumpType=0 / CustomDumpFlags=0x1B67, or DebugDiag) and analyse the symbolized stack before claiming a root cause.'
+  )
 
   [pscustomobject]@{
     status       = Get-OverallStatus -Hosts $allHosts
@@ -368,15 +455,19 @@ function Invoke-AosCrashTriage {
     aos          = $aosHosts
     clients      = $clientHosts
     summary      = [pscustomobject]@{
-      aos_hosts_total       = $aosHosts.Count
-      hosts_failed          = $failures.Count
-      aos_crash_total       = [int]$aosCrashTotal
-      hosts_with_crashes    = @($aosHosts | Where-Object { @($_.crashes).Count -gt 0 }).Count
-      session_error_total   = [int]$sessTotal
-      client_crash_total    = [int]$clientCrashTotal
-      crash_timeline        = $timeline
-      cascade_correlation   = $cascade
-      failures              = $failures
+      aos_hosts_total          = $aosHosts.Count
+      hosts_failed             = $failures.Count
+      access_violation_total   = [int]$avTotal
+      forced_termination_total = [int]$forcedTotal
+      session_symptom_total    = [int]$symTotal
+      client_crash_total       = [int]$clientCrashTotal
+      crash_timeline           = $timeline
+      cascade_correlation      = $cascade
+      dump_capture_ready_hosts = $dumpReady.Count
+      dump_capture_missing     = @($dumpMissing)
+      recent_hotfix_hosts      = @($aosHosts | Where-Object { @($_.recent_hotfixes).Count -gt 0 } | Select-Object -ExpandProperty computer)
+      caveats                  = $caveats
+      failures                 = $failures
     }
   }
 }
