@@ -4,7 +4,7 @@ description: Triage Microsoft Dynamics AX 2012 / R3 AOS (Ax32Serv.exe) crashes a
 license: MIT
 compatibility: Requires PowerShell 7+ on the operator machine and WinRM (PowerShell Remoting) enabled on the AOS and client/RDS hosts. Read-only; needs a credential that can read the System + Application logs and query services on the targets.
 metadata:
-  version: "1.1.0"
+  version: "1.1.1"
 ---
 
 # AX 2012 AOS Crash & Session-Cascade Triage

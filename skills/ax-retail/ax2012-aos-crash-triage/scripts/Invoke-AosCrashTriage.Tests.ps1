@@ -198,6 +198,25 @@ Describe 'Invoke-HostCollect (mocked remoting)' {
   }
 }
 
+Describe 'Invoke-FleetCollect (parallel fan-out plumbing)' {
+  # Regression: the parallel loop was wrapped in a scriptblock invoked with '& $collect', which
+  # made $using: variables fail at runtime ("A Using variable cannot be retrieved") - a bug unit
+  # tests missed because Pester mocks can't cross -Parallel runspaces. This exercises the real
+  # fan-out against a bogus host: the connection fails and is caught (status != ok), but the
+  # $using: plumbing must resolve WITHOUT throwing the using-variable error.
+  It 'returns empty for an empty target list (no remoting)' {
+    @(Invoke-FleetCollect -Targets @() -Credential (New-TestCredential) -Hours 1 -MaxEvents 1 `
+        -MaxMessageLength 1 -ThrottleLimit 1 -Authentication 'Default' -FuncDef 'x' -ClsDef 'y').Count | Should -Be 0
+  }
+  It 'runs the parallel loop without a using-variable error and returns a per-host result' {
+    $r = Invoke-FleetCollect -Targets @('nonexistent.invalid.test') -Credential (New-TestCredential) `
+      -Hours 1 -MaxEvents 1 -MaxMessageLength 1 -ThrottleLimit 1 -Authentication 'Default' `
+      -FuncDef ${function:Invoke-HostCollect}.ToString() -ClsDef ${function:Get-FailureClassification}.ToString()
+    @($r).Count | Should -Be 1
+    $r[0].status | Should -Not -Be 'ok'   # unreachable/auth_failed/error - but NOT a using-variable throw
+  }
+}
+
 Describe 'Remote block: server-side window + down-level safety' {
   BeforeAll {
     $script:Source = Get-Content (Join-Path $PSScriptRoot 'Invoke-AosCrashTriage.ps1') -Raw
